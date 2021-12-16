@@ -19,7 +19,8 @@ class KITTI_MOD_FIXED_Dataset(Dataset):
 
     def __len__(self):
         img_dir = self.data_dir + 'images/'
-        return len(os.listdir(img_dir)) - 50
+        # return len(os.listdir(img_dir)) - 50
+        return 100
 
     def __getitem__(self, idx):
         """
@@ -91,11 +92,8 @@ def test():
         transforms.ToTensor()
     ])
     dataset = KITTI_MOD_FIXED_Dataset(data_root, data_transforms)
-    print("starting...")
-    for i in range(len(dataset)):
-        dataset.__getitem__(i)
-    # print(f"len of dataset: {len(dataset)}\nshape of data: {item[0].shape}\nshape of targets: {item[1].shape}")
-    print("finished!")
+    item = dataset.__getitem__(0)
+    print(f"len of dataset: {len(dataset)}\nshape of data: {item[0].shape}\nshape of targets: {item[1].shape}")
 
 if __name__ == "__main__":
     test()
