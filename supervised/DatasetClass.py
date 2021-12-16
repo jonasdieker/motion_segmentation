@@ -6,6 +6,7 @@ import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset
 import os
+import torchvision.transforms as transforms
 
 class KITTI_MOD_FIXED_Dataset(Dataset):
     def __init__(
@@ -23,7 +24,7 @@ class KITTI_MOD_FIXED_Dataset(Dataset):
     def __getitem__(self, idx):
         """
         Output: 
-            Concatenated image [Bx6xHxW], Mask [BxHxW]
+            Concatenated image [Bx6xHxW], Mask [Bx1xHxW]
         """
 
         img_dir = self.data_dir + 'images/'
@@ -51,6 +52,7 @@ class KITTI_MOD_FIXED_Dataset(Dataset):
         image_1 = np.array(Image.open(img_path_1), np.float32)
 
         label_0 = torch.from_numpy(np.array(Image.open(label_path_0), np.float32))
+        label_0 = label_0[None, :, :]
 
         if self.transform:
             img_0_tensor = self.transform(image_0)
@@ -61,7 +63,7 @@ class KITTI_MOD_FIXED_Dataset(Dataset):
             img_1_tensor = torch.from_numpy(image_1)
             img_concat = torch.vstack([img_0_tensor, img_1_tensor])
 
-        return img_concat, label_0 
+        return (img_concat, label_0)
 
 
 """
@@ -79,3 +81,14 @@ dataloader= {
 input, gt = next(iter(dataloader["train"]))
 """
 
+def test():
+    data_root = '/storage/remote/atcremers40/motion_seg/datasets/KITTI_MOD_fixed/training/'
+    data_transforms = transforms.Compose([
+        transforms.ToTensor()
+    ])
+    dataset = KITTI_MOD_FIXED_Dataset(data_root, data_transforms)
+    item = dataset.__getitem__(0)
+    print(f"len of dataset: {len(dataset)}\nshape of data: {item[0].shape}\nshape of targets: {item[1].shape}")
+
+if __name__ == "__main__":
+    test()
