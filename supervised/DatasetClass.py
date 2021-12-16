@@ -19,7 +19,7 @@ class KITTI_MOD_FIXED_Dataset(Dataset):
 
     def __len__(self):
         img_dir = self.data_dir + 'images/'
-        return len(os.listdir(img_dir))
+        return len(os.listdir(img_dir)) - 50
 
     def __getitem__(self, idx):
         """
@@ -57,6 +57,10 @@ class KITTI_MOD_FIXED_Dataset(Dataset):
         if self.transform:
             img_0_tensor = self.transform(image_0)
             img_1_tensor = self.transform(image_1)
+            # test_boi = torch.rand(3,375,1242)
+            if img_0_tensor.shape != torch.Size([3,375,1242]) or img_1_tensor.shape != torch.Size([3,375,1242]):
+                print(img_path_0)
+                return
             img_concat = torch.vstack([img_0_tensor, img_1_tensor])
         else:
             img_0_tensor = torch.from_numpy(image_0)
@@ -87,8 +91,11 @@ def test():
         transforms.ToTensor()
     ])
     dataset = KITTI_MOD_FIXED_Dataset(data_root, data_transforms)
-    item = dataset.__getitem__(0)
-    print(f"len of dataset: {len(dataset)}\nshape of data: {item[0].shape}\nshape of targets: {item[1].shape}")
+    print("starting...")
+    for i in range(len(dataset)):
+        dataset.__getitem__(i)
+    # print(f"len of dataset: {len(dataset)}\nshape of data: {item[0].shape}\nshape of targets: {item[1].shape}")
+    print("finished!")
 
 if __name__ == "__main__":
     test()
