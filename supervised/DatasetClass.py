@@ -4,9 +4,7 @@ Data Loader for KITTI_MOD_FIXED as seen in 'MODNet: Moving Object Detection Netw
 import torch
 import numpy as np
 from PIL import Image
-from torch.utils.data import Dataset, DataLoader
-#from torchvision import transforms
-
+from torch.utils.data import Dataset
 import os
 
 class KITTI_MOD_FIXED_Dataset(Dataset):
@@ -23,6 +21,10 @@ class KITTI_MOD_FIXED_Dataset(Dataset):
         return len(os.listdir(img_dir))
 
     def __getitem__(self, idx):
+        """
+        Output: 
+            Concatenated image [Bx6xHxW], Mask [BxHxW]
+        """
 
         img_dir = self.data_dir + 'images/'
         label_dir = self.data_dir + 'mask/'
@@ -42,30 +44,31 @@ class KITTI_MOD_FIXED_Dataset(Dataset):
         #In order to avoid using pairs from different sets, will use the previous img
         if idx in idx_list:
             img_path_1 = img_dir + img_dir_sort[idx-1]
-            label_path_1 = label_dir + img_dir_sort[idx-1]
-
         else:
             img_path_1 = img_dir + img_dir_sort[idx+1]
-            label_path_1 = label_dir + img_dir_sort[idx+1]
 
         image_0 = np.array(Image.open(img_path_0), np.float32)
         image_1 = np.array(Image.open(img_path_1), np.float32)
 
         label_0 = torch.from_numpy(np.array(Image.open(label_path_0), np.float32))
-        label_1 = torch.from_numpy(np.array(Image.open(label_path_1), np.float32))
 
         if self.transform:
             img_0_tensor = self.transform(image_0)
             img_1_tensor = self.transform(image_1)
+            img_concat = torch.vstack([img_0_tensor, img_1_tensor])
         else:
             img_0_tensor = torch.from_numpy(image_0)
             img_1_tensor = torch.from_numpy(image_1)
+            img_concat = torch.vstack([img_0_tensor, img_1_tensor])
 
-        return [img_0_tensor, img_1_tensor], [label_0, label_1] 
+        return img_concat, label_0 
 
 
 """
-Example
+#Example
+
+from torchvision import transforms
+from torch.utils.data import DataLoader
 data_dir = '/storage/remote/atcremers40/motion_seg/datasets/KITTI_MOD_fixed/training/'
 data_transforms = transforms.Compose([
         transforms.ToTensor()
@@ -74,5 +77,5 @@ data = KITTI_MOD_FIXED_Dataset(data_dir, data_transforms)
 dataloader= {
     'train': DataLoader(data, batch_size=1, shuffle=False)}
 input, gt = next(iter(dataloader["train"]))
-
 """
+
