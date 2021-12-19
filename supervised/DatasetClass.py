@@ -7,8 +7,9 @@ from PIL import Image
 from torch.utils.data import Dataset
 import os
 import torchvision.transforms as transforms
+import glob
 
-class KITTI_MOD_FIXED_Dataset(Dataset):
+class KITTI_MOD_FIXED(Dataset):
     def __init__(
         self,
         data_dir,
@@ -58,7 +59,6 @@ class KITTI_MOD_FIXED_Dataset(Dataset):
         if self.transform:
             img_0_tensor = self.transform(image_0)
             img_1_tensor = self.transform(image_1)
-            # test_boi = torch.rand(3,375,1242)
             if img_0_tensor.shape != torch.Size([3,375,1242]) or img_1_tensor.shape != torch.Size([3,375,1242]):
                 print(img_path_0)
                 return
@@ -69,6 +69,73 @@ class KITTI_MOD_FIXED_Dataset(Dataset):
             img_concat = torch.vstack([img_0_tensor, img_1_tensor])
 
         return (img_concat, label_0)
+
+
+class ExtendedKittiMod(Dataset):
+    def __init__(self, data_root, transform=None):
+        self.data_root = data_root
+        self.transform = transform
+
+        self.image_paths = sorted(list(glob.glob(os.path.join(self.data_root, "images/**/data/*.png"))))
+        self.mask_paths = sorted(list(glob.glob(os.path.join(self.data_root, "masks/**/image_02/*.png"))))
+
+        print(len(self.image_paths))
+
+        temp_image_paths = self.image_paths.copy()
+        temp_masks_paths = self.mask_paths.copy()
+
+        dirs = []
+
+        for i in range(len(self.image_paths)-1):
+            path1 = self.image_paths[i]
+            path2 = self.image_paths[i+1]
+            if path1.split("/")[-3] != path2.split("/")[-3]:
+                temp_image_paths.remove(path1)
+
+            mask1 = self.mask_paths[i]
+            mask2 = self.mask_paths[i+1]
+            if mask1.split("/")[-3] != mask2.split("/")[-3]:
+                temp_masks_paths.remove(mask2)
+
+            if path1.split("/")[-3] not in dirs:
+                dirs.append(path1.split("/")[-3])
+
+        self.image_paths = temp_image_paths
+        self.mask_paths = temp_masks_paths
+
+        print(len(self.image_paths))
+        print(dirs)
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def get_pair_image(self, path):
+        img_name = path.split("/")[-1]
+        img_num = int(img_name.split(".")[0])
+        pair_name = f"{img_num+1:010}.png"
+        pair_path = os.path.join("/".join(path.split("/")[:-1]), pair_name)
+
+        return pair_path
+
+    def __getitem__(self, idx):
+
+        image_0 = np.array(Image.open(self.image_paths[idx]), np.float32)
+        image_1 = np.array(Image.open(self.get_pair_image(self.image_paths[idx])), np.float32)
+
+        label_0 = torch.from_numpy(np.array(Image.open(self.mask_paths[idx]), np.float32))
+        label_0 = label_0[None, :, :]
+        
+        if self.transform:
+            img_0_tensor = self.transform(image_0)
+            img_1_tensor = self.transform(image_1)
+            img_concat = torch.cat((img_0_tensor, img_1_tensor), dim=2)
+        else:
+            img_0_tensor = torch.from_numpy(image_0)
+            img_1_tensor = torch.from_numpy(image_1)
+            img_concat = torch.cat((img_0_tensor, img_1_tensor), dim=2)
+
+        return (img_concat, label_0)
+
 
 
 """
@@ -91,9 +158,16 @@ def test():
     data_transforms = transforms.Compose([
         transforms.ToTensor()
     ])
-    dataset = KITTI_MOD_FIXED_Dataset(data_root, data_transforms)
+    dataset = KITTI_MOD_FIXED(data_root, data_transforms)
     item = dataset.__getitem__(0)
     print(f"len of dataset: {len(dataset)}\nshape of data: {item[0].shape}\nshape of targets: {item[1].shape}")
 
+def test_ExtendedKittiMod():
+    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Extended_MOD_Masks/"
+    dataset = ExtendedKittiMod(data_root)
+    item = dataset.__getitem__(0)
+    print(f"len of dataset: {len(dataset)}\nshape of data: {item[0].shape}\nshape of targets: {item[1].shape}")
+
+
 if __name__ == "__main__":
-    test()
+    test_ExtendedKittiMod()
