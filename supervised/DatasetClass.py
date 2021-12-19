@@ -128,11 +128,11 @@ class ExtendedKittiMod(Dataset):
         if self.transform:
             img_0_tensor = self.transform(image_0)
             img_1_tensor = self.transform(image_1)
-            img_concat = torch.cat((img_0_tensor, img_1_tensor), dim=2)
+            img_concat = torch.vstack([img_0_tensor.permute((2,0,1)), img_1_tensor.permute((2,0,1))])
         else:
             img_0_tensor = torch.from_numpy(image_0)
             img_1_tensor = torch.from_numpy(image_1)
-            img_concat = torch.cat((img_0_tensor, img_1_tensor), dim=2)
+            img_concat = torch.vstack([img_0_tensor.permute((2,0,1)), img_1_tensor.permute((2,0,1))])
 
         return (img_concat, label_0)
 
@@ -171,3 +171,4 @@ def test_ExtendedKittiMod():
 
 if __name__ == "__main__":
     test_ExtendedKittiMod()
+    #test()
