@@ -66,7 +66,7 @@ class UNET(nn.Module):
             x = self.ups[idx+1](concat_skip)
 
         x = self.final_conv(x)
-        x = self.final_activation(x)
+        # x = self.final_activation(x)
         return x
 
 def test():
