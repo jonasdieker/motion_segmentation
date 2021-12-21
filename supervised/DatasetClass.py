@@ -75,20 +75,22 @@ class ExtendedKittiMod(Dataset):
     def __init__(self, data_root, transform=None):
         self.data_root = data_root
         self.transform = transform
+        self.image_paths = []
+        self.mask_paths = []
 
         # self.image_paths = sorted(list(glob.glob(os.path.join(self.data_root, "images/**/data/*.png"))))
         # self.mask_paths = sorted(list(glob.glob(os.path.join(self.data_root, "masks/**/image_02/*.png"))))
 
-        self.image_paths = sorted(list(glob.glob(os.path.join(self.data_root, "images/2011_09_26_drive_0005_sync/data/*.png"))))
-        self.mask_paths = sorted(list(glob.glob(os.path.join(self.data_root, "masks/2011_09_26_drive_0005_sync/image_02/*.png"))))
+        wanted_dirs = ["0005", "0013", "0014", "0015", "0018", "0032", "0051", "0056", "0057", "0059", "0060", "0084"]
+
+        for sequence_num in wanted_dirs:
+            self.image_paths.extend(sorted(list(glob.glob(os.path.join(self.data_root, f"images/2011_09_26_drive_{sequence_num}_sync/data/*.png")))))
+            self.mask_paths.extend(sorted(list(glob.glob(os.path.join(self.data_root, f"masks/2011_09_26_drive_{sequence_num}_sync/image_02/*.png")))))
 
         temp_image_paths = self.image_paths.copy()
         temp_masks_paths = self.mask_paths.copy()
 
         dirs = []
-
-        # dirs with masks that are mainly/all black
-        # unwanted_dirs = []
 
         # removing final image in each sequence as it wont have a pair
         for i in range(len(self.image_paths)-1):
