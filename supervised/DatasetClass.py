@@ -76,16 +76,21 @@ class ExtendedKittiMod(Dataset):
         self.data_root = data_root
         self.transform = transform
 
-        self.image_paths = sorted(list(glob.glob(os.path.join(self.data_root, "images/**/data/*.png"))))
-        self.mask_paths = sorted(list(glob.glob(os.path.join(self.data_root, "masks/**/image_02/*.png"))))
+        # self.image_paths = sorted(list(glob.glob(os.path.join(self.data_root, "images/**/data/*.png"))))
+        # self.mask_paths = sorted(list(glob.glob(os.path.join(self.data_root, "masks/**/image_02/*.png"))))
 
-        print(len(self.image_paths))
+        self.image_paths = sorted(list(glob.glob(os.path.join(self.data_root, "images/2011_09_26_drive_0005_sync/data/*.png"))))
+        self.mask_paths = sorted(list(glob.glob(os.path.join(self.data_root, "masks/2011_09_26_drive_0005_sync/image_02/*.png"))))
 
         temp_image_paths = self.image_paths.copy()
         temp_masks_paths = self.mask_paths.copy()
 
         dirs = []
 
+        # dirs with masks that are mainly/all black
+        # unwanted_dirs = []
+
+        # removing final image in each sequence as it wont have a pair
         for i in range(len(self.image_paths)-1):
             path1 = self.image_paths[i]
             path2 = self.image_paths[i+1]
@@ -95,16 +100,22 @@ class ExtendedKittiMod(Dataset):
             mask1 = self.mask_paths[i]
             mask2 = self.mask_paths[i+1]
             if mask1.split("/")[-3] != mask2.split("/")[-3]:
-                temp_masks_paths.remove(mask2)
+                temp_masks_paths.remove(mask1)
 
             if path1.split("/")[-3] not in dirs:
                 dirs.append(path1.split("/")[-3])
 
+            # if path1 in []:
+            #     temp_image_paths.remove(path1)
+            #     temp_masks_paths.remove(mask1)
+
+        temp_image_paths = temp_image_paths[:-1]
+        temp_masks_paths = temp_masks_paths[:-1]
+
         self.image_paths = temp_image_paths
         self.mask_paths = temp_masks_paths
 
-        print(len(self.image_paths))
-        print(dirs)
+        print(f"dirs loaded:\n{dirs}")
 
     def __len__(self):
         return len(self.image_paths)
@@ -134,7 +145,7 @@ class ExtendedKittiMod(Dataset):
             img_1_tensor = torch.from_numpy(image_1)
             img_concat = torch.vstack([img_0_tensor.permute((2,0,1)), img_1_tensor.permute((2,0,1))])
 
-        return (img_concat, label_0)
+        return (img_concat, label_0/255)
 
 
 
