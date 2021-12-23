@@ -13,7 +13,7 @@ import os
 import gc
 import matplotlib.pyplot as plt
 import numpy as np
-from datetime import datetime
+from datetime import datetime, time
 import matplotlib.pyplot as plt
 import PIL
 
@@ -100,7 +100,9 @@ writer = SummaryWriter("/storage/remote/atcremers40/motion_seg/runs/" + now_stri
 print("train network ...")
 train_loss = []
 val_loss = []
+total_time = None
 for epoch in range(epochs):
+    start = time.time()
     model.train()
     losses = []
     steps_per_epoch = len(train_loader)
@@ -131,6 +133,11 @@ for epoch in range(epochs):
     # print(f"Epoch {epoch}: loss => {sum(losses)/len(losses)}")
     train_loss.append(sum(losses)/len(losses))
     val_loss.append(run_val(val_loader, model))
-    print(f"epoch [{epoch + 1}/{epochs}], train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}")
+    end = time.time()
+    total_time += (end-start)
+    print(f"epoch [{epoch + 1}/{epochs}], train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {((total_time/epoch)*(epochs-epoch-1))/60**2}")
 
 writer.close()
+
+save_path = f"/storage/remote/atcremers40/motion_seg/saved_models/{batch_size}_{lr}_{epochs}.pt"
+torch.save(model, save_path)
