@@ -81,7 +81,7 @@ model = model.float()
 optimizer = optim.Adam(model.parameters(), lr=lr)
 criterion = nn.BCEWithLogitsLoss()
 # criterion = nn.BCELoss()
-scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
+scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
 
 def run_val(loader, model):
     model.eval()
@@ -149,7 +149,7 @@ for epoch in range(epochs):
 
         if (batch_idx) % 20 == 0:
             writer.add_scalar("training loss", sum(losses)/len(losses), epoch*steps_per_epoch + batch_idx)
-            writer.add_scalar("lr change", lr, epochs*steps_per_epoch + batch_idx)
+            writer.add_scalar("lr change", lr, epoch*steps_per_epoch + batch_idx)
 
     # print(f"Epoch {epoch}: loss => {sum(losses)/len(losses)}")
     train_loss.append(sum(losses)/len(losses))
@@ -158,7 +158,7 @@ for epoch in range(epochs):
     total_time += (end-start)
     scheduler.step(val_loss[epoch])
     print(epochs, epoch, total_time)
-    logging.info(f"Epoch [{epoch + 1}/{epochs}] with lr {lr}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {((total_time/(epoch+1))*(epochs-epoch-1))/60**2}")
+    logging.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {((total_time/(epoch+1))*(epochs-epoch-1))/60**2}")
 
     save_path = f"/storage/remote/atcremers40/motion_seg/saved_models/{model_name_prefix}_{batch_size}_{lr}_{epoch}.pt"
     torch.save(model, save_path)
