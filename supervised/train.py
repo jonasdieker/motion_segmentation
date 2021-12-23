@@ -14,16 +14,39 @@ import os
 import gc
 import matplotlib.pyplot as plt
 import numpy as np
-from datetime import datetime, time
+from datetime import datetime
+import time
 import matplotlib.pyplot as plt
 import PIL
+import logging
+
+# specify some hyperparams
+lr = 5e-3
+batch_size = 4
+epochs = 100
+alpha = 0.25
+gamma = 2.0
+print(f"running with lr={lr}, batch_size={batch_size}, epochs={epochs}")
+
+# setup time/date for logging/saving models
+now = datetime.now()
+now_string = now.strftime("%d-%m-%Y_%H-%M")
+
+# setup logging
+log_root = "/storage/remote/atcremers40/motion_seg/logs"
+logger = logging.basicConfig(
+    format="[%(levelname)s] %(message)s",
+    level=logging.INFO,
+    handlers=[
+        logging.FileHandler(os.path.join(log_root, f'{now_string}_{batch_size}_{lr}_{epochs}.log')),
+        logging.StreamHandler(sys.stdout)
+    ])
 
 # set device and clean up
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 gc.collect()
 torch.cuda.empty_cache()
 print(f"running on '{device}'")
-
 
 # dataset
 # data_root = '/storage/remote/atcremers40/motion_seg/datasets/KITTI_MOD_fixed/training/'
@@ -33,12 +56,6 @@ data_transforms = transforms.Compose([
 ])
 # dataset = KITTI_MOD_FIXED(data_root, data_transforms)
 dataset = ExtendedKittiMod(data_root)
-
-# specify some hyperparams
-lr = 5e-3
-batch_size = 4
-epochs = 100
-print(f"running with lr={lr}, batch_size={batch_size}, epochs={epochs}")
 
 # data split and data loader
 train_size = int(0.8 *  len(dataset))
@@ -64,7 +81,7 @@ model = model.float()
 optimizer = optim.Adam(model.parameters(), lr=lr)
 criterion = nn.BCEWithLogitsLoss()
 # criterion = nn.BCELoss()
-scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3, verbose=True)
+scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
 
 def run_val(loader, model):
     model.eval()
@@ -76,7 +93,7 @@ def run_val(loader, model):
 
             # forward
             scores = model(x)
-            loss = sigmoid_focal_loss(scores, y, reduction="sum")
+            loss = sigmoid_focal_loss(scores, y, alpha=alpha, gamma=gamma, reduction="sum")
             # loss = criterion(scores, y)
             val_losses.append(loss.item())
 
@@ -94,15 +111,16 @@ def run_val(loader, model):
 
 
 # initialise tensorboard
-now = datetime.now()
-now_string = now.strftime("%d.%m.%Y_%H:%M:%S")
 writer = SummaryWriter("/storage/remote/atcremers40/motion_seg/runs/" + now_string)
+
+# for model saving
+model_name_prefix = now.strftime("%d-%m-%Y")
 
 # train network
 print("train network ...")
 train_loss = []
 val_loss = []
-total_time = None
+total_time = 0.0
 for epoch in range(epochs):
     start = time.time()
     model.train()
@@ -117,7 +135,7 @@ for epoch in range(epochs):
 
         # forward
         scores = model(data)
-        loss = sigmoid_focal_loss(scores, targets, reduction="sum")
+        loss = sigmoid_focal_loss(scores, targets, alpha=alpha, gamma=gamma, reduction="sum")
         # loss = criterion(scores, targets)
 
         # backward
@@ -129,8 +147,9 @@ for epoch in range(epochs):
 
         losses.append(loss.item())
 
-        if (batch_idx + 1) % 20 == 0:
+        if (batch_idx) % 20 == 0:
             writer.add_scalar("training loss", sum(losses)/len(losses), epoch*steps_per_epoch + batch_idx)
+            writer.add_scalar("lr change", lr, epochs*steps_per_epoch + batch_idx)
 
     # print(f"Epoch {epoch}: loss => {sum(losses)/len(losses)}")
     train_loss.append(sum(losses)/len(losses))
@@ -138,9 +157,13 @@ for epoch in range(epochs):
     end = time.time()
     total_time += (end-start)
     scheduler.step(val_loss[epoch])
-    print(f"epoch [{epoch + 1}/{epochs}], train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {((total_time/epoch)*(epochs-epoch-1))/60**2}")
+    print(epochs, epoch, total_time)
+    logging.info(f"Epoch [{epoch + 1}/{epochs}] with lr {lr}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {((total_time/(epoch+1))*(epochs-epoch-1))/60**2}")
+
+    save_path = f"/storage/remote/atcremers40/motion_seg/saved_models/{model_name_prefix}_{batch_size}_{lr}_{epoch}.pt"
+    torch.save(model, save_path)
 
 writer.close()
 
-save_path = f"/storage/remote/atcremers40/motion_seg/saved_models/{batch_size}_{lr}_{epochs}.pt"
+save_path = f"/storage/remote/atcremers40/motion_seg/saved_models/{model_name_prefix}_{batch_size}_{lr}_{epochs}.pt"
 torch.save(model, save_path)
