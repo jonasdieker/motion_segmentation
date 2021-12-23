@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 from DatasetClass import KITTI_MOD_FIXED, ExtendedKittiMod
 from ModelClass import UNET, UNET_Mod
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import sys
 import os
 import gc
@@ -63,6 +64,7 @@ model = model.float()
 optimizer = optim.Adam(model.parameters(), lr=lr)
 criterion = nn.BCEWithLogitsLoss()
 # criterion = nn.BCELoss()
+scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3, verbose=True)
 
 def run_val(loader, model):
     model.eval()
@@ -135,6 +137,7 @@ for epoch in range(epochs):
     val_loss.append(run_val(val_loader, model))
     end = time.time()
     total_time += (end-start)
+    scheduler.step(val_loss[epoch])
     print(f"epoch [{epoch + 1}/{epochs}], train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {((total_time/epoch)*(epochs-epoch-1))/60**2}")
 
 writer.close()
