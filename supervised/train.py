@@ -22,7 +22,7 @@ import logging
 
 # specify some hyperparams
 lr = 5e-3
-batch_size = 4
+batch_size = 2
 epochs = 100
 alpha = 0.25
 gamma = 2.0
@@ -30,7 +30,7 @@ print(f"running with lr={lr}, batch_size={batch_size}, epochs={epochs}")
 
 # setup time/date for logging/saving models
 now = datetime.now()
-now_string = now.strftime("%d-%m-%Y_%H-%M")
+now_string = now.strftime(f"%d-%m-%Y_%H-%M_{batch_size}_{lr}_{epochs}")
 
 # setup logging
 log_root = "/storage/remote/atcremers40/motion_seg/logs"
@@ -38,7 +38,7 @@ logger = logging.basicConfig(
     format="[%(levelname)s] %(message)s",
     level=logging.INFO,
     handlers=[
-        logging.FileHandler(os.path.join(log_root, f'{now_string}_{batch_size}_{lr}_{epochs}.log')),
+        logging.FileHandler(os.path.join(log_root, f'{now_string}.log')),
         logging.StreamHandler(sys.stdout)
     ])
 
@@ -67,8 +67,8 @@ val_loader = DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
 # init model and pass to `device`
 input_channels=6
 output_channels=1
-# model = UNET(in_channels=input_channels, out_channels=output_channels).to(device)
-model = UNET_Mod(input_channels, output_channels).to(device)
+model = UNET(in_channels=input_channels, out_channels=output_channels).to(device)
+# model = UNET_Mod(input_channels, output_channels).to(device)
 model = model.float()
 
 # for running single batch
@@ -149,7 +149,7 @@ for epoch in range(epochs):
 
         if (batch_idx) % 20 == 0:
             writer.add_scalar("training loss", sum(losses)/len(losses), epoch*steps_per_epoch + batch_idx)
-            writer.add_scalar("lr change", lr, epoch*steps_per_epoch + batch_idx)
+            writer.add_scalar("lr change", optimizer.param_groups[0]['lr'], epoch*steps_per_epoch + batch_idx)
 
     # print(f"Epoch {epoch}: loss => {sum(losses)/len(losses)}")
     train_loss.append(sum(losses)/len(losses))
@@ -157,8 +157,7 @@ for epoch in range(epochs):
     end = time.time()
     total_time += (end-start)
     scheduler.step(val_loss[epoch])
-    print(epochs, epoch, total_time)
-    logging.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {((total_time/(epoch+1))*(epochs-epoch-1))/60**2}")
+    logging.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {round(((total_time/(epoch+1))*(epochs-epoch-1))/60**2,2)} hrs")
 
     save_path = f"/storage/remote/atcremers40/motion_seg/saved_models/{model_name_prefix}_{batch_size}_{lr}_{epoch}.pt"
     torch.save(model, save_path)
