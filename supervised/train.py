@@ -159,8 +159,9 @@ for epoch in range(epochs):
     scheduler.step(val_loss[epoch])
     logging.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {round(((total_time/(epoch+1))*(epochs-epoch-1))/60**2,2)} hrs")
 
-    save_path = f"/storage/remote/atcremers40/motion_seg/saved_models/{model_name_prefix}_{batch_size}_{lr}_{epoch}.pt"
-    torch.save(model, save_path)
+    if (epoch+1) % 5 == 0:
+        save_path = f"/storage/remote/atcremers40/motion_seg/saved_models/{model_name_prefix}_{batch_size}_{lr}_{epoch}.pt"
+        torch.save(model, save_path)
 
 writer.close()
 
