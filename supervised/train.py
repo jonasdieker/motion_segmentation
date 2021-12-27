@@ -19,75 +19,13 @@ import time
 import matplotlib.pyplot as plt
 import PIL
 import logging
+import argparse
 
-# specify some hyperparams
-lr = 5e-3
-batch_size = 2
-epochs = 100
-alpha = 0.25
-gamma = 2.0
-print(f"running with lr={lr}, batch_size={batch_size}, epochs={epochs}")
-
-# setup time/date for logging/saving models
-now = datetime.now()
-now_string = now.strftime(f"%d-%m-%Y_%H-%M_{batch_size}_{lr}_{epochs}")
-
-# setup logging
-log_root = "/storage/remote/atcremers40/motion_seg/logs"
-logger = logging.basicConfig(
-    format="[%(levelname)s] %(message)s",
-    level=logging.INFO,
-    handlers=[
-        logging.FileHandler(os.path.join(log_root, f'{now_string}.log')),
-        logging.StreamHandler(sys.stdout)
-    ])
-
-# set device and clean up
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-gc.collect()
-torch.cuda.empty_cache()
-print(f"running on '{device}'")
-
-# dataset
-# data_root = '/storage/remote/atcremers40/motion_seg/datasets/KITTI_MOD_fixed/training/'
-data_root = "/storage/remote/atcremers40/motion_seg/datasets/Extended_MOD_Masks/"
-data_transforms = transforms.Compose([
-    transforms.ToTensor()
-])
-# dataset = KITTI_MOD_FIXED(data_root, data_transforms)
-dataset = ExtendedKittiMod(data_root)
-
-# data split and data loader
-train_size = int(0.8 *  len(dataset))
-val_size = len(dataset) - train_size
-train_set, val_set = torch.utils.data.random_split(dataset, [train_size, val_size])
-train_loader = DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True)
-val_loader = DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
-
-# init model and pass to `device`
-input_channels=6
-output_channels=1
-model = UNET(in_channels=input_channels, out_channels=output_channels).to(device)
-# model = UNET_Mod(input_channels, output_channels).to(device)
-model = model.float()
-
-# for running single batch
-# [data, targets] = next(iter(train_loader))
-# print(len(np.where(targets[0] > 0)[0]))
-# plt.imshow(targets[0].detach().cpu().permute(1,2,0).numpy())
-# plt.show()
-
-# loss and optimizer
-optimizer = optim.Adam(model.parameters(), lr=lr)
-criterion = nn.BCEWithLogitsLoss()
-# criterion = nn.BCELoss()
-scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
-
-def run_val(loader, model):
+def run_val(val_loader, model, epoch):
     model.eval()
     val_losses = []
     with torch.no_grad():
-        for batch_idx, (x, y) in enumerate(loader):
+        for batch_idx, (x, y) in enumerate(val_loader):
             x = x.to(device=device).float()
             y = y.to(device=device).float()
 
@@ -103,67 +41,154 @@ def run_val(loader, model):
                 writer.add_images("visualised_preds", scores_rounded, global_step=epoch+1)
                 writer.add_images("visualised_gts", y, global_step=epoch+1)
 
-        writer.add_scalar("val loss", sum(val_losses)/len(val_losses), epoch*len(val_loader)) 
+        writer.add_scalar("val loss", sum(val_losses)/len(val_losses), epoch*len(val_loader))
 
     # set back to train ensures layers like dropout, batchnorm are used after eval
     model.train()
     return sum(val_losses)/len(val_losses)
 
+def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
 
-# initialise tensorboard
-writer = SummaryWriter("/storage/remote/atcremers40/motion_seg/runs/" + now_string)
+    # data split and data loader
+    train_size = int(0.8 *  len(dataset))
+    val_size = len(dataset) - train_size
+    train_set, val_set = torch.utils.data.random_split(dataset, [train_size, val_size])
+    train_loader = DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
 
-# for model saving
-model_name_prefix = now.strftime("%d-%m-%Y")
+    # init model and pass to `device`
+    input_channels=6
+    output_channels=1
+    model = UNET(in_channels=input_channels, out_channels=output_channels).to(device)
+    # model = UNET_Mod(input_channels, output_channels).to(device)
+    model = model.float()
 
-# train network
-print("train network ...")
-train_loss = []
-val_loss = []
-total_time = 0.0
-for epoch in range(epochs):
-    start = time.time()
-    model.train()
-    losses = []
-    steps_per_epoch = len(train_loader)
+    # loss and optimizer
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.BCEWithLogitsLoss()
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=lr_scheduler_factor, patience=patience, verbose=True)
 
-    for batch_idx, (data, targets) in enumerate(train_loader):
+    # for model saving
+    model_name_prefix = now.strftime(f"%d-%m-%Y_%H-%M_bs{batch_size}")
 
-        # move data to gpu if available
-        data = data.to(device).float()
-        targets = targets.to(device).float()
+    # train network
+    print("train network ...")
+    train_loss = []
+    val_loss = []
+    total_time = 0.0
+    for epoch in range(epochs):
+        start = time.time()
+        model.train()
+        losses = []
+        steps_per_epoch = len(train_loader)
 
-        # forward
-        scores = model(data)
-        loss = sigmoid_focal_loss(scores, targets, alpha=alpha, gamma=gamma, reduction="sum")
-        # loss = criterion(scores, targets)
+        for batch_idx, (data, targets) in enumerate(train_loader):
 
-        # backward
-        optimizer.zero_grad()
-        loss.backward()
+            # move data to gpu if available
+            data = data.to(device).float()
+            targets = targets.to(device).float()
 
-        # adam step
-        optimizer.step()
+            # forward
+            scores = model(data)
+            loss = sigmoid_focal_loss(scores, targets, alpha=alpha, gamma=gamma, reduction="sum")
+            # loss = criterion(scores, targets)
 
-        losses.append(loss.item())
+            # backward
+            optimizer.zero_grad()
+            loss.backward()
 
-        if (batch_idx) % 20 == 0:
-            writer.add_scalar("training loss", sum(losses)/len(losses), epoch*steps_per_epoch + batch_idx)
-            writer.add_scalar("lr change", optimizer.param_groups[0]['lr'], epoch*steps_per_epoch + batch_idx)
+            # adam step
+            optimizer.step()
 
-    # print(f"Epoch {epoch}: loss => {sum(losses)/len(losses)}")
-    train_loss.append(sum(losses)/len(losses))
-    val_loss.append(run_val(val_loader, model))
-    end = time.time()
-    total_time += (end-start)
-    scheduler.step(val_loss[epoch])
-    logging.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {round(((total_time/(epoch+1))*(epochs-epoch-1))/60**2,2)} hrs")
+            losses.append(loss.item())
 
-    if (epoch+1) % 5 == 0:
-        save_path = f"/storage/remote/atcremers40/motion_seg/saved_models/{model_name_prefix}_{batch_size}_{lr}_{epoch}.pt"
-        torch.save(model, save_path)
+            if (batch_idx) % 20 == 0:
+                writer.add_scalar("training loss", sum(losses)/len(losses), epoch*steps_per_epoch + batch_idx)
+                writer.add_scalar("lr change", optimizer.param_groups[0]['lr'], epoch*steps_per_epoch + batch_idx)
 
-writer.close()
+        # print(f"Epoch {epoch}: loss => {sum(losses)/len(losses)}")
+        train_loss.append(sum(losses)/len(losses))
+        val_loss.append(run_val(val_loader, model, epoch))
+        end = time.time()
+        total_time += (end-start)
+        scheduler.step(val_loss[epoch])
+        logging.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {round(((total_time/(epoch+1))*(epochs-epoch-1))/60**2,2)} hrs")
 
-save_path = f"/storage/remote/atcremers40/motion_seg/saved_models/{model_name_prefix}_{batch_size}_{lr}_{epochs}.pt"
-torch.save(model, save_path)
+        # check if dir exists, if not create one
+        models_root = f"/storage/remote/atcremers40/motion_seg/saved_models/"
+        if not os.path.isdir(os.path.join(models_root, model_name_prefix)):
+            os.mkdir(os.path.join(models_root, model_name_prefix))
+        if (epoch+1) % 5 == 0:
+            # save interim model
+            save_path = os.path.join(models_root, f"{model_name_prefix}/{batch_size}_{lr}_{epoch}.pt")
+            torch.save(model, save_path)
+
+    writer.close()
+    # closing and reopening log stuff
+    logger.FileHandler.close()
+    logging.FileHandler(os.path.join(log_root, f'{now_string}.log'))
+
+    # save final model
+    save_path = os.path.join(models_root, model_name_prefix, f"{batch_size}_{lr}_{epochs}.pt")
+    torch.save(model, save_path)
+
+
+def parse():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--lr", default=5e-3)
+    parser.add_argument("--batch_size", default=2)
+    parser.add_argument("--epochs", default=100)
+    parser.add_argument("--patience", default=3)
+    parser.add_argument("--lr_scheduler_factor", default=0.25, help="float by which the learning rate is multiplied")
+    parser.add_argument("--alpha", default=0.25)
+    parser.add_argument("--gamma", default=5.0)
+
+    return parser
+
+if __name__ == "__main__":
+    args = parse().parse_args()
+
+    lr = args.lr
+    batch_size = args.batch_size
+    epochs = args.epochs
+    patience = args.patience
+    lr_scheduler_factor = args.lr_scheduler_factor
+    alpha = args.alpha
+    gamma = args.gamma
+
+    # specify some hyperparams
+    print(f"running with lr={lr}, batch_size={batch_size}, epochs={epochs}")
+
+    # setup time/date for logging/saving models
+    now = datetime.now()
+    now_string = now.strftime(f"%d-%m-%Y_%H-%M_{batch_size}_{lr}_{epochs}")
+
+    # setup logging
+    log_root = "/storage/remote/atcremers40/motion_seg/logs"
+    logger = logging.basicConfig(
+        format="[%(levelname)s] %(message)s",
+        level=logging.INFO,
+        handlers=[
+            logging.FileHandler(os.path.join(log_root, f'{now_string}.log')),
+            logging.StreamHandler(sys.stdout)
+        ])
+
+    # set device and clean up
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    gc.collect()
+    torch.cuda.empty_cache()
+    print(f"running on '{device}'")
+
+    # dataset
+    # data_root = '/storage/remote/atcremers40/motion_seg/datasets/KITTI_MOD_fixed/training/'
+    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Extended_MOD_Masks/"
+    data_transforms = transforms.Compose([
+        transforms.ToTensor()
+    ])
+    # dataset = KITTI_MOD_FIXED(data_root, data_transforms)
+    dataset = ExtendedKittiMod(data_root)
+
+    # initialise tensorboard
+    writer = SummaryWriter("/storage/remote/atcremers40/motion_seg/runs/" + now_string)
+
+    train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma)
