@@ -72,7 +72,7 @@ class KITTI_MOD_FIXED(Dataset):
 
 
 class ExtendedKittiMod(Dataset):
-    def __init__(self, data_root, transform=None):
+    def __init__(self, data_root, transform=None, test=False):
         self.data_root = data_root
         self.transform = transform
         self.image_paths = []
@@ -81,7 +81,11 @@ class ExtendedKittiMod(Dataset):
         # self.image_paths = sorted(list(glob.glob(os.path.join(self.data_root, "images/**/data/*.png"))))
         # self.mask_paths = sorted(list(glob.glob(os.path.join(self.data_root, "masks/**/image_02/*.png"))))
 
-        wanted_dirs = ["0005", "0013", "0014", "0015", "0018", "0032", "0051", "0056", "0057", "0059", "0060", "0084"]
+        if test == False:
+            wanted_dirs = ["0005", "0013", "0014", "0015", "0018", "0032", "0051", "0056", "0057", "0059", "0060", "0084"]
+            # wanted_dirs = ["0005"]
+        else:
+            wanted_dirs = ["sf"]
 
         for sequence_num in wanted_dirs:
             self.image_paths.extend(sorted(list(glob.glob(os.path.join(self.data_root, f"images/2011_09_26_drive_{sequence_num}_sync/data/*.png")))))
