@@ -112,7 +112,14 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
         end = time.time()
         total_time += (end-start)
         scheduler.step(val_loss[epoch])
-        logging.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {round(((total_time/(epoch+1))*(epochs-epoch-1))/60**2,2)} hrs")
+        logger.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {round(((total_time/(epoch+1))*(epochs-epoch-1))/60**2,2)} hrs")
+
+        #Logging fix for stale file handler
+        logger.removeHandler(logger.handlers[1])
+        fh = logging.FileHandler(os.path.join(log_root, f'{now_string}.log'))
+        fh.setLevel(logging.INFO)
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
 
         # check if dir exists, if not create one
         models_root = f"/storage/remote/atcremers40/motion_seg/saved_models/"
@@ -124,10 +131,6 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
             torch.save(model, save_path)
 
     writer.close()
-    # closing and reopening log stuff
-    logger.FileHandler.close()
-    logging.FileHandler(os.path.join(log_root, f'{now_string}.log'))
-
     # save final model
     save_path = os.path.join(models_root, model_name_prefix, f"{batch_size}_{lr}_{epochs}.pt")
     torch.save(model, save_path)
@@ -135,13 +138,13 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
 
 def parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", default=5e-3)
-    parser.add_argument("--batch_size", default=2)
-    parser.add_argument("--epochs", default=100)
-    parser.add_argument("--patience", default=3)
-    parser.add_argument("--lr_scheduler_factor", default=0.25, help="float by which the learning rate is multiplied")
-    parser.add_argument("--alpha", default=0.25)
-    parser.add_argument("--gamma", default=5.0)
+    parser.add_argument("--lr", default=5e-3, type=int)
+    parser.add_argument("--batch_size", default=2, type=int)
+    parser.add_argument("--epochs", default=100, type=int)
+    parser.add_argument("--patience", default=3, type=float)
+    parser.add_argument("--lr_scheduler_factor", default=0.25, type=float, help="float by which the learning rate is multiplied")
+    parser.add_argument("--alpha", default=0.25, type=float)
+    parser.add_argument("--gamma", default=5.0, type=float)
 
     return parser
 
@@ -165,14 +168,15 @@ if __name__ == "__main__":
 
     # setup logging
     log_root = "/storage/remote/atcremers40/motion_seg/logs"
-    logger = logging.basicConfig(
-        format="[%(levelname)s] %(message)s",
-        level=logging.INFO,
-        handlers=[
-            logging.FileHandler(os.path.join(log_root, f'{now_string}.log')),
-            logging.StreamHandler(sys.stdout)
-        ])
-
+    formatter = logging.Formatter('[%(levelname)s] %(message)s')
+    logging.basicConfig(
+    format="[%(levelname)s] %(message)s",
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(os.path.join(log_root, f'{now_string}.log'))
+    ])
+    logger = logging.getLogger()
     # set device and clean up
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     gc.collect()
