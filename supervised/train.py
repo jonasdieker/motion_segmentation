@@ -21,27 +21,42 @@ import PIL
 import logging
 import argparse
 
-def run_val(val_loader, model, epoch):
+def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor):
+    SMOOTH = 1e-6
+    outputs = outputs.squeeze(1)  # BATCH x 1 x H x W => BATCH x H x W
+    
+    intersection = torch.bitwise_and(outputs, labels).float().sum()  # Will be zero if Truth=0 or Prediction=0
+    union = torch.bitwise_or(outputs, labels).float().sum()         # Will be zero if both are 0
+    
+    iou = (intersection + SMOOTH) / (union + SMOOTH)  # We smooth our devision to avoid 0/0
+        
+    return iou
+
+def run_val(val_loader, model, epoch, train_size):
     model.eval()
     val_losses = []
+    val_iou = []
     with torch.no_grad():
-        for batch_idx, (x, y) in enumerate(val_loader):
-            x = x.to(device=device).float()
-            y = y.to(device=device).float()
+        for batch_idx, (data, targets) in enumerate(val_loader):
+            data = data.to(device=device).float()
+            targets = targets.to(device=device).float()
 
             # forward
-            scores = model(x)
-            loss = sigmoid_focal_loss(scores, y, alpha=alpha, gamma=gamma, reduction="sum")
+            scores = model(data)
+            loss = sigmoid_focal_loss(scores, targets, alpha=alpha, gamma=gamma, reduction="sum")
             # loss = criterion(scores, y)
             val_losses.append(loss.item())
+            scores_rounded = torch.round(sigmoid(scores))
 
             if batch_idx == 0:
-                sigmoid = nn.Sigmoid()
-                scores_rounded = torch.round(sigmoid(scores))
                 writer.add_images("visualised_preds", scores_rounded, global_step=epoch+1)
-                writer.add_images("visualised_gts", y, global_step=epoch+1)
+                writer.add_images("visualised_gts", targets, global_step=epoch+1)
 
-        writer.add_scalar("val loss", sum(val_losses)/len(val_losses), epoch*len(val_loader))
+            iou = iou_pytorch(scores_rounded.int(), targets.int())
+            val_iou.append(iou)     
+
+        writer.add_scalar("val loss", sum(val_losses)/len(val_losses), epoch*train_size)
+        writer.add_scalar("aIoU", sum(val_iou)/len(val_iou), epoch*train_size)
 
     # set back to train ensures layers like dropout, batchnorm are used after eval
     model.train()
@@ -109,13 +124,13 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
 
         # print(f"Epoch {epoch}: loss => {sum(losses)/len(losses)}")
         train_loss.append(sum(losses)/len(losses))
-        val_loss.append(run_val(val_loader, model, epoch))
+        val_loss.append(run_val(val_loader, model, epoch, train_size))
         end = time.time()
         total_time += (end-start)
         scheduler.step(val_loss[epoch])
         logger.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {round(((total_time/(epoch+1))*(epochs-epoch-1))/60**2,2)} hrs")
 
-        #Logging fix for stale file handler
+        # Logging fix for stale file handler
         logger.removeHandler(logger.handlers[1])
         fh = logging.FileHandler(os.path.join(log_root, f'{now_string}.log'))
         fh.setLevel(logging.INFO)
@@ -128,12 +143,12 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
             os.mkdir(os.path.join(models_root, model_name_prefix), mode=0o770)
         if (epoch+1) % 5 == 0:
             # save interim model
-            save_path = os.path.join(models_root, f"{model_name_prefix}/{batch_size}_{lr}_{epoch}.pt")
+            save_path = os.path.join(models_root, f"{model_name_prefix}/{batch_size}_{lr}_{epoch+1}.pt")
             torch.save(model, save_path)
         #Saving the best val_loss model
         if val_loss[-1] < best_val:
             best_val = val_loss[-1]
-            save_path = os.path.join(models_root, f"{model_name_prefix}/best_val_{batch_size}_{lr}_{epoch}.pt")
+            save_path = os.path.join(models_root, f"{model_name_prefix}/best_val_{batch_size}_{lr}_{epoch+1}.pt")
             torch.save(model, save_path)
 
     writer.close()
@@ -200,5 +215,8 @@ if __name__ == "__main__":
 
     # initialise tensorboard
     writer = SummaryWriter("/storage/remote/atcremers40/motion_seg/runs/" + now_string)
+
+    # needed for validation metrics
+    sigmoid = nn.Sigmoid()
 
     train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma)
