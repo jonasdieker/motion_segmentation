@@ -75,6 +75,7 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
     print("train network ...")
     train_loss = []
     val_loss = []
+    best_val = 1e8
     total_time = 0.0
     for epoch in range(epochs):
         start = time.time()
@@ -128,6 +129,11 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
         if (epoch+1) % 5 == 0:
             # save interim model
             save_path = os.path.join(models_root, f"{model_name_prefix}/{batch_size}_{lr}_{epoch}.pt")
+            torch.save(model, save_path)
+        #Saving the best val_loss model
+        if val_loss[-1] < best_val:
+            best_val = val_loss[-1]
+            save_path = os.path.join(models_root, f"{model_name_prefix}/best_val_{batch_size}_{lr}_{epoch}.pt")
             torch.save(model, save_path)
 
     writer.close()
