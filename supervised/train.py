@@ -125,7 +125,7 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
         # check if dir exists, if not create one
         models_root = f"/storage/remote/atcremers40/motion_seg/saved_models/"
         if not os.path.isdir(os.path.join(models_root, model_name_prefix)):
-            os.mkdir(os.path.join(models_root, model_name_prefix))
+            os.mkdir(os.path.join(models_root, model_name_prefix), mode=0o770)
         if (epoch+1) % 5 == 0:
             # save interim model
             save_path = os.path.join(models_root, f"{model_name_prefix}/{batch_size}_{lr}_{epoch}.pt")
@@ -144,13 +144,13 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
 
 def parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", default=5e-3, type=int)
-    parser.add_argument("--batch_size", default=2, type=int)
-    parser.add_argument("--epochs", default=100, type=int)
-    parser.add_argument("--patience", default=3, type=float)
-    parser.add_argument("--lr_scheduler_factor", default=0.25, type=float, help="float by which the learning rate is multiplied")
-    parser.add_argument("--alpha", default=0.25, type=float)
-    parser.add_argument("--gamma", default=5.0, type=float)
+    parser.add_argument("--lr", default=5e-3, type=int, help='Learning rate - default: 5e-3')
+    parser.add_argument("--batch_size", default=2, type=int, help='Default=2')
+    parser.add_argument("--epochs", default=100, type=int, help='Default=100')
+    parser.add_argument("--patience", default=3, type=float, help='Default=3')
+    parser.add_argument("--lr_scheduler_factor", default=0.25, type=float, help="Learning rate multiplier - default: 3")
+    parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
+    parser.add_argument("--gamma", default=5.0, type=float, help='Focal loss gamma - default: 5')
 
     return parser
 
