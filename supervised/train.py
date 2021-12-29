@@ -174,12 +174,11 @@ def parse():
     parser.add_argument("--lr", default=5e-3, type=int, help='Learning rate - default: 5e-3')
     parser.add_argument("--batch_size", default=2, type=int, help='Default=2')
     parser.add_argument("--epochs", default=75, type=int, help='Default=100')
-    parser.add_argument("--patience", default=3, type=float, help='Default=3')
+    parser.add_argument("--patience", default=5, type=float, help='Default=5')
     parser.add_argument("--lr_scheduler_factor", default=0.25, type=float, help="Learning rate multiplier - default: 3")
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
-    parser.add_argument("--gamma", default=5.0, type=float, help='Focal loss gamma - default: 5')
+    parser.add_argument("--gamma", default=7.0, type=float, help='Focal loss gamma - default: 7')
     parser.add_argument("--load_chkpt", '-chkpt', default='0', type=str, help="Loading entire checkpoint path for inference/continue training")
-
     return parser
 
 if __name__ == "__main__":
