@@ -62,7 +62,7 @@ def run_val(val_loader, model, epoch, train_size):
     model.train()
     return sum(val_losses)/len(val_losses)
 
-def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
+def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, prev_model):
 
     # data split and data loader
     train_size = int(0.8 *  len(dataset))
@@ -74,9 +74,15 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
     # init model and pass to `device`
     input_channels=6
     output_channels=1
-    model = UNET(in_channels=input_channels, out_channels=output_channels).to(device)
-    # model = UNET_Mod(input_channels, output_channels).to(device)
-    model = model.float()
+
+    if prev_model:
+        model = torch.load(prev_model).to(device)
+        model = model.float()
+
+    else:
+        # model = UNET(in_channels=input_channels, out_channels=output_channels).to(device)
+        model = UNET_Mod(input_channels, output_channels).to(device)
+        model = model.float()
 
     # loss and optimizer
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -91,6 +97,7 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
     train_loss = []
     val_loss = []
     best_val = 1e8
+    best_val_epoch = 1
     total_time = 0.0
     for epoch in range(epochs):
         start = time.time()
@@ -148,8 +155,13 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma):
         #Saving the best val_loss model
         if val_loss[-1] < best_val:
             best_val = val_loss[-1]
-            save_path = os.path.join(models_root, f"{model_name_prefix}/best_val_{batch_size}_{lr}_{epoch+1}.pt")
+            best_val_epoch = epoch+1
+            save_path = os.path.join(models_root, f"{model_name_prefix}/best_val.pt")
+            if os.path.exists(save_path):
+                os.remove(save_path)
             torch.save(model, save_path)
+        if (epoch+1) % 10 == 0:
+            logger.info(f"Epoch [{epoch + 1}] Current best learning rate at epoch {best_val_epoch}")
 
     writer.close()
     # save final model
@@ -161,11 +173,12 @@ def parse():
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", default=5e-3, type=int, help='Learning rate - default: 5e-3')
     parser.add_argument("--batch_size", default=2, type=int, help='Default=2')
-    parser.add_argument("--epochs", default=100, type=int, help='Default=100')
+    parser.add_argument("--epochs", default=75, type=int, help='Default=100')
     parser.add_argument("--patience", default=3, type=float, help='Default=3')
     parser.add_argument("--lr_scheduler_factor", default=0.25, type=float, help="Learning rate multiplier - default: 3")
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
     parser.add_argument("--gamma", default=5.0, type=float, help='Focal loss gamma - default: 5')
+    parser.add_argument("--load_chkpt", '-chkpt', default='0', type=str, help="Loading entire checkpoint path for inference/continue training")
 
     return parser
 
@@ -179,6 +192,14 @@ if __name__ == "__main__":
     lr_scheduler_factor = args.lr_scheduler_factor
     alpha = args.alpha
     gamma = args.gamma
+    if os.path.exists(args.load_chkpt):
+        prev_model = args.load_chkpt
+        print(f"Loading model {os.path.basename(prev_model)} from {os.path.dirname(prev_model)}")
+    elif args.load_chkpt == '0':
+        prev_model=None
+    else:
+        prev_model=None
+        print("Path specified incorrectly, training without a checkpoint model")
 
     # specify some hyperparams
     print(f"running with lr={lr}, batch_size={batch_size}, epochs={epochs}")
@@ -219,4 +240,4 @@ if __name__ == "__main__":
     # needed for validation metrics
     sigmoid = nn.Sigmoid()
 
-    train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma)
+    train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, prev_model)
