@@ -24,13 +24,15 @@ import argparse
 def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor):
     SMOOTH = 1e-6
     outputs = outputs.squeeze(1)  # BATCH x 1 x H x W => BATCH x H x W
+    labels = labels.squeeze(1)
     
-    intersection = torch.bitwise_and(outputs, labels).float().sum()  # Will be zero if Truth=0 or Prediction=0
-    union = torch.bitwise_or(outputs, labels).float().sum()         # Will be zero if both are 0
+    intersection = torch.sum(torch.bitwise_and(outputs, labels).float(), (1,2))  # Will be zero if Truth=0 or Prediction=0
+    union = torch.sum(torch.bitwise_or(outputs, labels).float(), (1,2))          # Will be zero if both are 0
     
-    iou = (intersection + SMOOTH) / (union + SMOOTH)  # We smooth our devision to avoid 0/0
+    IoU = (intersection + SMOOTH) / (union + SMOOTH)  # We smooth our devision to avoid 0/0
+    aIoU = IoU.mean()
         
-    return iou
+    return aIoU
 
 def run_val(val_loader, model, epoch, train_size):
     model.eval()
@@ -173,11 +175,11 @@ def parse():
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", default=5e-3, type=int, help='Learning rate - default: 5e-3')
     parser.add_argument("--batch_size", default=2, type=int, help='Default=2')
-    parser.add_argument("--epochs", default=75, type=int, help='Default=100')
-    parser.add_argument("--patience", default=5, type=float, help='Default=5')
+    parser.add_argument("--epochs", default=75, type=int, help='Default=75')
+    parser.add_argument("--patience", default=4, type=float, help='Default=4')
     parser.add_argument("--lr_scheduler_factor", default=0.25, type=float, help="Learning rate multiplier - default: 3")
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
-    parser.add_argument("--gamma", default=7.0, type=float, help='Focal loss gamma - default: 7')
+    parser.add_argument("--gamma", default=9.0, type=float, help='Focal loss gamma - default: 9')
     parser.add_argument("--load_chkpt", '-chkpt', default='0', type=str, help="Loading entire checkpoint path for inference/continue training")
     return parser
 
@@ -191,6 +193,8 @@ if __name__ == "__main__":
     lr_scheduler_factor = args.lr_scheduler_factor
     alpha = args.alpha
     gamma = args.gamma
+
+    # load checkpoint if path exists
     if os.path.exists(args.load_chkpt):
         prev_model = args.load_chkpt
         print(f"Loading model {os.path.basename(prev_model)} from {os.path.dirname(prev_model)}")
