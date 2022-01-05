@@ -68,7 +68,7 @@ class KITTI_MOD_FIXED(Dataset):
             img_1_tensor = torch.from_numpy(image_1)
             img_concat = torch.vstack([img_0_tensor, img_1_tensor])
 
-        return (img_concat, label_0)
+        return (img_concat/255, label_0/255)
 
 
 class ExtendedKittiMod(Dataset):
@@ -150,7 +150,7 @@ class ExtendedKittiMod(Dataset):
             img_1_tensor = torch.from_numpy(image_1)
             img_concat = torch.vstack([img_0_tensor.permute((2,0,1)), img_1_tensor.permute((2,0,1))])
 
-        return (img_concat, label_0/255)
+        return (img_concat/255, label_0/255)
 
 
 
