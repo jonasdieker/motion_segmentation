@@ -52,17 +52,21 @@ def run_val(val_loader, model, epoch, train_size):
 
             if batch_idx == 0:
                 writer.add_images("visualised_preds", scores_rounded, global_step=epoch+1)
+                writer.add_images("visualised_gts_rgb", data[:,0:3,:,:], global_step=epoch+1)
                 writer.add_images("visualised_gts", targets, global_step=epoch+1)
 
             iou = iou_pytorch(scores_rounded.int(), targets.int())
-            val_iou.append(iou)     
+            val_iou.append(iou)
 
-        writer.add_scalar("val loss", sum(val_losses)/len(val_losses), epoch*train_size)
-        writer.add_scalar("aIoU", sum(val_iou)/len(val_iou), epoch*train_size)
+        val_loss = sum(val_losses)/len(val_losses)
+        aIoU = sum(val_iou)/len(val_iou)
+
+        writer.add_scalar("val loss", val_loss, epoch*train_size)
+        writer.add_scalar("aIoU", aIoU, epoch*train_size)
 
     # set back to train ensures layers like dropout, batchnorm are used after eval
     model.train()
-    return sum(val_losses)/len(val_losses)
+    return (val_loss, aIoU)
 
 def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, prev_model):
 
@@ -97,7 +101,7 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, p
     # train network
     print("train network ...")
     train_loss = []
-    val_loss = []
+    val_aIoU = []
     best_val = 1e8
     best_val_epoch = 1
     total_time = 0.0
@@ -133,11 +137,11 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, p
 
         # print(f"Epoch {epoch}: loss => {sum(losses)/len(losses)}")
         train_loss.append(sum(losses)/len(losses))
-        val_loss.append(run_val(val_loader, model, epoch, train_size))
+        val_aIoU.append(run_val(val_loader, model, epoch, train_size))
         end = time.time()
         total_time += (end-start)
-        scheduler.step(val_loss[epoch])
-        logger.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_loss[-1], 5)}, ETA: {round(((total_time/(epoch+1))*(epochs-epoch-1))/60**2,2)} hrs")
+        scheduler.step(val_aIoU[epoch][0])
+        logger.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_aIoU[-1][0], 5)}, aIoU: {round(val_aIoU[-1][1].item(), 5)}, ETA: {round(((total_time/(epoch+1))*(epochs-epoch-1))/60**2,2)} hrs")
 
         # Logging fix for stale file handler
         logger.removeHandler(logger.handlers[1])
@@ -154,16 +158,17 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, p
             # save interim model
             save_path = os.path.join(models_root, f"{model_name_prefix}/{batch_size}_{lr}_{epoch+1}.pt")
             torch.save(model, save_path)
-        #Saving the best val_loss model
-        if val_loss[-1] < best_val:
-            best_val = val_loss[-1]
-            best_val_epoch = epoch+1
-            save_path = os.path.join(models_root, f"{model_name_prefix}/best_val.pt")
+
+        #Saving the best aIoU model
+        if val_aIoU[-1][1] < best_val:
+            best_aIoU = val_aIoU[-1][1]
+            best_aIoU_epoch = epoch+1
+            save_path = os.path.join(models_root, f"{model_name_prefix}/best_aIoU.pt")
             if os.path.exists(save_path):
                 os.remove(save_path)
             torch.save(model, save_path)
         if (epoch+1) % 10 == 0:
-            logger.info(f"Epoch [{epoch + 1}] Current best learning rate at epoch {best_val_epoch}")
+            logger.info(f"Epoch [{epoch + 1}] Current best learning rate at epoch {best_aIoU_epoch}")
 
     writer.close()
     # save final model
@@ -225,6 +230,7 @@ if __name__ == "__main__":
     
     # set device and clean up
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    # device = torch.device('cpu')
     gc.collect()
     torch.cuda.empty_cache()
     print(f"running on '{device}'")
