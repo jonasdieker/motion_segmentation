@@ -82,8 +82,8 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, p
         model = model.float()
 
     else:
-        # model = UNET(in_channels=input_channels, out_channels=output_channels).to(device)
-        model = UNET_Mod(input_channels, output_channels).to(device)
+        model = UNET(in_channels=input_channels, out_channels=output_channels).to(device)
+        # model = UNET_Mod(input_channels, output_channels).to(device)
         model = model.float()
 
     # loss and optimizer
@@ -179,7 +179,7 @@ def parse():
     parser.add_argument("--patience", default=4, type=float, help='Default=4')
     parser.add_argument("--lr_scheduler_factor", default=0.25, type=float, help="Learning rate multiplier - default: 3")
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
-    parser.add_argument("--gamma", default=9.0, type=float, help='Focal loss gamma - default: 9')
+    parser.add_argument("--gamma", default=2.0, type=float, help='Focal loss gamma - default: 2')
     parser.add_argument("--load_chkpt", '-chkpt', default='0', type=str, help="Loading entire checkpoint path for inference/continue training")
     return parser
 
@@ -222,6 +222,7 @@ if __name__ == "__main__":
         logging.FileHandler(os.path.join(log_root, f'{now_string}.log'))
     ])
     logger = logging.getLogger()
+    
     # set device and clean up
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     gc.collect()
