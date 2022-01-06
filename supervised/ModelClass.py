@@ -139,6 +139,9 @@ class UNET_Mod(nn.Module):
 def test():
     x = torch.randn((4, 6, 375, 1242))
     model = UNET(in_channels=6, out_channels=1)
+    model.train()
+    pytorch_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"num of learnable params: {pytorch_total_params}")
     preds = model(x)
     assert preds.shape == (4,1,375,1242)
     print(preds.shape)
@@ -146,10 +149,13 @@ def test():
 def test_mod():
     x = torch.randn((4, 6, 375, 1242))
     model = UNET_Mod(in_channels=6, out_channels=1)
+    model.train()
+    pytorch_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"num of learnable params: {pytorch_total_params}")
     preds = model(x)
     assert preds.shape == (4,1,375,1242)
     print(preds.shape)
 
 if __name__ == "__main__":
-    # test()
-    test_mod()
+    test()
+    # test_mod()
