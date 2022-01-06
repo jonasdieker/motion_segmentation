@@ -34,6 +34,15 @@ def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor):
         
     return aIoU
 
+def refresh_logger(logger):
+    # Logging fix for stale file handler
+    logger.removeHandler(logger.handlers[1])
+    fh = logging.FileHandler(os.path.join(log_root, f'{now_string}.log'))
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+    return logger
+
 def run_val(val_loader, model, epoch, train_size):
     model.eval()
     val_losses = []
@@ -70,13 +79,6 @@ def run_val(val_loader, model, epoch, train_size):
 
 def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, prev_model):
 
-    # data split and data loader
-    train_size = int(0.8 *  len(dataset))
-    val_size = len(dataset) - train_size
-    train_set, val_set = torch.utils.data.random_split(dataset, [train_size, val_size])
-    train_loader = DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
-
     # init model and pass to `device`
     input_channels=6
     output_channels=1
@@ -89,6 +91,8 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, p
         model = UNET(in_channels=input_channels, out_channels=output_channels).to(device)
         # model = UNET_Mod(input_channels, output_channels).to(device)
         model = model.float()
+
+    logger.info(f"loaded model of type: {type(model)}")
 
     # loss and optimizer
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -129,26 +133,22 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, p
             # adam step
             optimizer.step()
 
-            losses.append(loss.item())
+            losses.append(loss.item()) 
 
             if (batch_idx) % 20 == 0:
                 writer.add_scalar("training loss", sum(losses)/len(losses), epoch*steps_per_epoch + batch_idx)
                 writer.add_scalar("lr change", optimizer.param_groups[0]['lr'], epoch*steps_per_epoch + batch_idx)
 
-        # print(f"Epoch {epoch}: loss => {sum(losses)/len(losses)}")
         train_loss.append(sum(losses)/len(losses))
         val_aIoU.append(run_val(val_loader, model, epoch, train_size))
         end = time.time()
         total_time += (end-start)
         scheduler.step(val_aIoU[epoch][0])
-        logger.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_aIoU[-1][0], 5)}, aIoU: {round(val_aIoU[-1][1].item(), 5)}, ETA: {round(((total_time/(epoch+1))*(epochs-epoch-1))/60**2,2)} hrs")
 
-        # Logging fix for stale file handler
-        logger.removeHandler(logger.handlers[1])
-        fh = logging.FileHandler(os.path.join(log_root, f'{now_string}.log'))
-        fh.setLevel(logging.INFO)
-        fh.setFormatter(formatter)
-        logger.addHandler(fh)
+        logger = refresh_logger(logger)
+
+        # info logging to log
+        logger.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_aIoU[-1][0], 5)}, aIoU: {round(val_aIoU[-1][1].item(), 5)}, ETA: {round(((total_time/(epoch+1))*(epochs-epoch-1))/60**2,2)} hrs")
 
         # check if dir exists, if not create one
         models_root = f"/storage/remote/atcremers40/motion_seg/saved_models/"
@@ -202,15 +202,15 @@ if __name__ == "__main__":
     # load checkpoint if path exists
     if os.path.exists(args.load_chkpt):
         prev_model = args.load_chkpt
-        print(f"Loading model {os.path.basename(prev_model)} from {os.path.dirname(prev_model)}")
+        logger.info(f"Loading model {os.path.basename(prev_model)} from {os.path.dirname(prev_model)}")
     elif args.load_chkpt == '0':
         prev_model=None
     else:
         prev_model=None
-        print("Path specified incorrectly, training without a checkpoint model")
+        logger.warning("Path specified incorrectly, training without a checkpoint model")
 
     # specify some hyperparams
-    print(f"running with lr={lr}, batch_size={batch_size}, epochs={epochs}")
+    logger.info(f"running with lr={lr}, batch_size={batch_size}, epochs={epochs}, patience={patience}, lr_scheduler_factor={lr_scheduler_factor} alpha={alpha}, gamma={gamma}")
 
     # setup time/date for logging/saving models
     now = datetime.now()
@@ -233,7 +233,7 @@ if __name__ == "__main__":
     # device = torch.device('cpu')
     gc.collect()
     torch.cuda.empty_cache()
-    print(f"running on '{device}'")
+    logger.info(f"running on '{device}'")
 
     # dataset
     # data_root = '/storage/remote/atcremers40/motion_seg/datasets/KITTI_MOD_fixed/training/'
@@ -249,5 +249,12 @@ if __name__ == "__main__":
 
     # needed for validation metrics
     sigmoid = nn.Sigmoid()
+
+    # data split and data loader
+    train_size = int(0.8 *  len(dataset))
+    val_size = len(dataset) - train_size
+    train_set, val_set = torch.utils.data.random_split(dataset, [train_size, val_size])
+    train_loader = DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
 
     train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, prev_model)
