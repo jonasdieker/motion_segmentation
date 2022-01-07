@@ -77,7 +77,7 @@ def run_val(val_loader, model, epoch, train_size):
     model.train()
     return (val_loss, aIoU)
 
-def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, prev_model):
+def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, prev_model, logger):
 
     # init model and pass to `device`
     input_channels=6
@@ -168,7 +168,7 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, p
                 os.remove(save_path)
             torch.save(model, save_path)
         if (epoch+1) % 10 == 0:
-            logger.info(f"Epoch [{epoch + 1}] Current best learning rate at epoch {best_aIoU_epoch}")
+            logger.info(f"Epoch [{epoch + 1}] Current best aIoU at epoch {best_aIoU_epoch}")
 
     writer.close()
     # save final model
@@ -178,7 +178,7 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, p
 
 def parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", default=5e-3, type=int, help='Learning rate - default: 5e-3')
+    parser.add_argument("--lr", default=1e-4, type=int, help='Learning rate - default: 5e-3')
     parser.add_argument("--batch_size", default=2, type=int, help='Default=2')
     parser.add_argument("--epochs", default=75, type=int, help='Default=75')
     parser.add_argument("--patience", default=4, type=float, help='Default=4')
@@ -199,19 +199,6 @@ if __name__ == "__main__":
     alpha = args.alpha
     gamma = args.gamma
 
-    # load checkpoint if path exists
-    if os.path.exists(args.load_chkpt):
-        prev_model = args.load_chkpt
-        logger.info(f"Loading model {os.path.basename(prev_model)} from {os.path.dirname(prev_model)}")
-    elif args.load_chkpt == '0':
-        prev_model=None
-    else:
-        prev_model=None
-        logger.warning("Path specified incorrectly, training without a checkpoint model")
-
-    # specify some hyperparams
-    logger.info(f"running with lr={lr}, batch_size={batch_size}, epochs={epochs}, patience={patience}, lr_scheduler_factor={lr_scheduler_factor} alpha={alpha}, gamma={gamma}")
-
     # setup time/date for logging/saving models
     now = datetime.now()
     now_string = now.strftime(f"%d-%m-%Y_%H-%M_{batch_size}_{lr}_{epochs}")
@@ -227,6 +214,19 @@ if __name__ == "__main__":
         logging.FileHandler(os.path.join(log_root, f'{now_string}.log'))
     ])
     logger = logging.getLogger()
+
+    # load checkpoint if path exists
+    if os.path.exists(args.load_chkpt):
+        prev_model = args.load_chkpt
+        logger.info(f"Loading model {os.path.basename(prev_model)} from {os.path.dirname(prev_model)}")
+    elif args.load_chkpt == '0':
+        prev_model=None
+    else:
+        prev_model=None
+        logger.warning("Path specified incorrectly, training without a checkpoint model")
+
+    # specify some hyperparams
+    logger.info(f"running with lr={lr}, batch_size={batch_size}, epochs={epochs}, patience={patience}, lr_scheduler_factor={lr_scheduler_factor} alpha={alpha}, gamma={gamma}")
     
     # set device and clean up
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -257,4 +257,4 @@ if __name__ == "__main__":
     train_loader = DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
 
-    train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, prev_model)
+    train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, prev_model, logger)
