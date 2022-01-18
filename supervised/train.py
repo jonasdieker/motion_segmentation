@@ -178,10 +178,10 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, p
 
 def parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", default=1e-4, type=int, help='Learning rate - default: 5e-3')
+    parser.add_argument("--lr", default=1e-5, type=int, help='Learning rate - default: 5e-3')
     parser.add_argument("--batch_size", default=2, type=int, help='Default=2')
     parser.add_argument("--epochs", default=75, type=int, help='Default=75')
-    parser.add_argument("--patience", default=4, type=float, help='Default=4')
+    parser.add_argument("--patience", default=3, type=float, help='Default=4')
     parser.add_argument("--lr_scheduler_factor", default=0.25, type=float, help="Learning rate multiplier - default: 3")
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
     parser.add_argument("--gamma", default=2.0, type=float, help='Focal loss gamma - default: 2')
@@ -253,7 +253,7 @@ if __name__ == "__main__":
     # data split and data loader
     train_size = int(0.8 *  len(dataset))
     val_size = len(dataset) - train_size
-    train_set, val_set = torch.utils.data.random_split(dataset, [train_size, val_size])
+    train_set, val_set = torch.utils.data.random_split(dataset, [train_size, val_size], generator = torch.Generator().manual_seed(0))
     train_loader = DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
 
