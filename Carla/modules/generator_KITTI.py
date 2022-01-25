@@ -115,7 +115,7 @@ class RGB(Camera):
         camera_bp.set_attribute('image_size_y', '1024')
         camera_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
         camera_bp.set_attribute('enable_postprocess_effects', 'True')
-        camera_bp.set_attribute('sensor_tick', '0.10') # 10Hz camera
+        camera_bp.set_attribute('sensor_tick', '0.50') # 2Hz camera
         camera_bp.set_attribute('gamma', '2.2')
         camera_bp.set_attribute('motion_blur_intensity', '0')
         camera_bp.set_attribute('motion_blur_max_distortion', '0')
@@ -143,7 +143,7 @@ class SS(Camera):
         camera_ss_bp.set_attribute('image_size_x', '1392')
         camera_ss_bp.set_attribute('image_size_y', '1024')
         camera_ss_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
-        camera_ss_bp.set_attribute('sensor_tick', '0.10') # 10Hz camera
+        camera_ss_bp.set_attribute('sensor_tick', '0.50') # 2Hz camera
         return camera_ss_bp
 
     def save(self, color_converter=carla.ColorConverter.CityScapesPalette):
