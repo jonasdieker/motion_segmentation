@@ -44,10 +44,10 @@ def main():
         client = carla.Client('localhost', 2000)
         init_settings = carla.WorldSettings()
         
-        for i_map in [0, 1, 2, 3, 4, 5, 6]: #7 maps from Town01 to Town07
+        for i_map in [0, 1, 2, 3, 4, 5, 6]: #7 maps from Town01_Opt to Town07_Opt
             client.set_timeout(100.0)
-            print("Map Town0"+str(i_map+1))
-            world = client.load_world("Town0"+str(i_map+1))
+            print("Map Town0%s_Opt" % str(i_map+1))
+            world = client.load_world("Town0%s_Opt" % str(i_map+1))
             folder_output = "KITTI_Dataset_CARLA_v%s/%s/generated" %(client.get_client_version(), world.get_map().name)
             os.makedirs(folder_output) if not os.path.exists(folder_output) else [os.remove(f) for f in glob.glob(folder_output+"/*") if os.path.isfile(f)]
             client.start_recorder(os.path.dirname(os.path.realpath(__file__))+"/"+folder_output+"/recording.log")
@@ -83,7 +83,7 @@ def main():
             print("KITTI stopped")
 
             # Set sensors transformation from KITTI
-            cam0_transform = carla.Transform(carla.Location(x=0.30, y=0, z=1.70), carla.Rotation(pitch=0, yaw=0, roll=0))
+            cam0_transform = carla.Transform(carla.Location(x=0.50, y=0, z=1.70), carla.Rotation(pitch=0, yaw=0, roll=0))
 
             # Take a screenshot
             gen.screenshot(KITTI, world, actor_list, folder_output, carla.Transform(carla.Location(x=0.0, y=0, z=2.0), carla.Rotation(pitch=0, yaw=0, roll=0)))
