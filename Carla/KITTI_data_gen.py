@@ -22,34 +22,37 @@ import time
 from datetime import date
 from modules import generator_KITTI as gen
 
+import numpy as np
+
 def main():
     start_record_full = time.time()
 
-    fps_simu = 1000.0
+    fps_simu = 200
     time_stop = 2.0
     nbr_frame = 5000 #MAX = 10000
-    nbr_walkers = 50
+    nbr_walkers = 0
     nbr_vehicles = 50
 
     actor_list = []
     vehicles_list = []
     all_walkers_id = []
-    data_date = date.today().strftime("%Y_%m_%d")
-    
-    spawn_points = [23,46,0,125,53,257,62]
     
     init_settings = None
+
+    sequences=10
+    spawn_pts_len = 155 #for map10_HD
+    spawn_points = np.random.choice(spawn_pts_len,sequences, replace=False)
 
     try:
         client = carla.Client('localhost', 2000)
         init_settings = carla.WorldSettings()
         
-        for i_map in [0, 1, 2, 3, 4, 5, 6]: #7 maps from Town01_Opt to Town07_Opt
+        for i_sequence in range(sequences): 
             client.set_timeout(100.0)
-            print("Map Town0%s_Opt" % str(i_map+1))
-            world = client.load_world("Town0%s_Opt" % str(i_map+1))
-            folder_output = "KITTI_Dataset_CARLA_v%s/%s/generated" %(client.get_client_version(), world.get_map().name)
-            os.makedirs(folder_output) if not os.path.exists(folder_output) else [os.remove(f) for f in glob.glob(folder_output+"/*") if os.path.isfile(f)]
+            print(f"Starting sequence {i_sequence}")
+            world = client.load_world("Town10HD_Opt")
+            world.unload_map_layer(carla.MapLayer.ParkedVehicles)
+            folder_output = f"Carla_Data/%s/{i_sequence}" %(world.get_map().name)
             client.start_recorder(os.path.dirname(os.path.realpath(__file__))+"/"+folder_output+"/recording.log")
             
             # Weather
@@ -67,7 +70,8 @@ def main():
             bp_KITTI = blueprint_library.find('vehicle.tesla.model3')
             bp_KITTI.set_attribute('color', '228, 239, 241')
             bp_KITTI.set_attribute('role_name', 'KITTI')
-            start_pose = world.get_map().get_spawn_points()[spawn_points[i_map]]
+            start_pose = world.get_map().get_spawn_points()[spawn_points[i_sequence]]
+            print(f"Spawning at point {spawn_points[i_sequence]} \n x={start_pose.location.x:.2f}, y = {start_pose.location.y:.2f}, z = {start_pose.location.z:.2f}")
             KITTI = world.spawn_actor(bp_KITTI, start_pose)
             waypoint = world.get_map().get_waypoint(start_pose.location)
             actor_list.append(KITTI)
@@ -93,7 +97,7 @@ def main():
             gen.SS.sensor_id_glob = 10
             cam0 = gen.RGB(KITTI, world, actor_list, folder_output, cam0_transform)
             cam0_ss = gen.SS(KITTI, world, actor_list, folder_output, cam0_transform)
-            cam0_ms = gen.SS(KITTI, world, actor_list, folder_output, cam0_transform, motion_mask=True)
+            cam0_is = gen.IS(KITTI, world, actor_list, folder_output, cam0_transform)
 
             # Launch KITTI
             KITTI.set_autopilot(True)
@@ -108,10 +112,12 @@ def main():
             print("Start record : ")
             frame_current = 0
             while (frame_current < nbr_frame):
-                cam0.save()
-                cam0_ss.save()
-                cam0_ms.save()
+                if frame_current%15==0:
+                    cam0.save()
+                    cam0_ss.save()
+                    cam0_is.save(world, vehicles_list)
                 gen.follow(KITTI.get_transform(), world)
+                frame_current += 1
                 world.tick()    # Pass to the next simulator frame
             
             print('Destroying %d vehicles' % len(vehicles_list))
