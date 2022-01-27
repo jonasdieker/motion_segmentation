@@ -53,13 +53,10 @@ class Sensor:
         self.ts_tmp = 0
 
 class Camera(Sensor):
-    def __init__(self, vehicle, world, actor_list, folder_output, transform, motion_mask):
+    def __init__(self, vehicle, world, actor_list, folder_output, transform):
         Sensor.__init__(self, vehicle, world, actor_list, folder_output, transform)
         self.sensor_frame_id = 0
-        if not motion_mask:
-            self.frame_output = self.folder_output+"/images_%s" %str.lower(self.__class__.__name__)
-        else:
-            self.frame_output = self.folder_output+"/images_ms"
+        self.frame_output = self.folder_output+"/images_%s" %str.lower(self.__class__.__name__)
         os.makedirs(self.frame_output) if not os.path.exists(self.frame_output) else [os.remove(f) for f in glob.glob(self.frame_output+"/*") if os.path.isfile(f)]
 
         with open(self.folder_output+"/full_ts_camera.txt", 'w') as file:
@@ -78,22 +75,7 @@ class Camera(Sensor):
             self.ts_tmp = ts
 
             file_path = self.frame_output+"/%04d_%d.png" %(self.sensor_frame_id, self.sensor_id)
-
-            if not motion_mask:
-                x = threading.Thread(target=data.save_to_disk, args=(file_path, color_converter))
-            
-            else:
-                #extract motion mask from semseg
-                data.convert(carla.ColorConverter.Raw)
-                y = np.frombuffer(data.raw_data, dtype=np.dtype("uint8"))
-                y = np.reshape(y, (data.height, data.width, 4))
-                y = y[:,:,2:3].squeeze(axis=2)
-                motion_seg = (np.where((y==4) | (y==10), 255, 0))
-                im=Image.fromarray(motion_seg.astype(np.uint8))
-                im.convert("L")
-                x = threading.Thread(target=im.save, args=(file_path,))
-
-
+            x = threading.Thread(target=data.save_to_disk, args=(file_path, color_converter))
             x.start()
             print("Export : "+file_path)
 
@@ -105,8 +87,8 @@ class Camera(Sensor):
 class RGB(Camera):
     sensor_id_glob = 0
 
-    def __init__(self, vehicle, world, actor_list, folder_output, transform, motion_mask=False):
-        Camera.__init__(self, vehicle, world, actor_list, folder_output, transform, motion_mask)
+    def __init__(self, vehicle, world, actor_list, folder_output, transform):
+        Camera.__init__(self, vehicle, world, actor_list, folder_output, transform)
 
     def set_attributes(self, blueprint_library):
         camera_bp = blueprint_library.find('sensor.camera.rgb')
@@ -115,7 +97,7 @@ class RGB(Camera):
         camera_bp.set_attribute('image_size_y', '1024')
         camera_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
         camera_bp.set_attribute('enable_postprocess_effects', 'True')
-        camera_bp.set_attribute('sensor_tick', '0.50') # 2Hz camera
+        camera_bp.set_attribute('sensor_tick', '0.10') # 10Hz camera
         camera_bp.set_attribute('gamma', '2.2')
         camera_bp.set_attribute('motion_blur_intensity', '0')
         camera_bp.set_attribute('motion_blur_max_distortion', '0')
@@ -133,9 +115,8 @@ class RGB(Camera):
 
 class SS(Camera):
     sensor_id_glob = 10
-    def __init__(self, vehicle, world, actor_list, folder_output, transform, motion_mask=False):
-        Camera.__init__(self, vehicle, world, actor_list, folder_output, transform, motion_mask)
-        self.ms = motion_mask
+    def __init__(self, vehicle, world, actor_list, folder_output, transform):
+        Camera.__init__(self, vehicle, world, actor_list, folder_output, transform)
 
     def set_attributes(self, blueprint_library):
         camera_ss_bp = blueprint_library.find('sensor.camera.semantic_segmentation')
@@ -143,11 +124,71 @@ class SS(Camera):
         camera_ss_bp.set_attribute('image_size_x', '1392')
         camera_ss_bp.set_attribute('image_size_y', '1024')
         camera_ss_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
-        camera_ss_bp.set_attribute('sensor_tick', '0.50') # 2Hz camera
+        camera_ss_bp.set_attribute('sensor_tick', '0.10') # 10Hz camera
         return camera_ss_bp
 
     def save(self, color_converter=carla.ColorConverter.CityScapesPalette):
-        Camera.save(self, color_converter, motion_mask=self.ms)
+        Camera.save(self, color_converter)
+
+
+class IS(Camera):
+    sensor_id_glob = 10
+    def __init__(self, vehicle, world, actor_list, folder_output, transform):
+        Camera.__init__(self, vehicle, world, actor_list, folder_output, transform)
+
+    def set_attributes(self, blueprint_library):
+        camera_ss_bp = blueprint_library.find('sensor.camera.instance_segmentation')
+
+        camera_ss_bp.set_attribute('image_size_x', '1392')
+        camera_ss_bp.set_attribute('image_size_y', '1024')
+        camera_ss_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
+        camera_ss_bp.set_attribute('sensor_tick', '0.10') # 2Hz camera
+        return camera_ss_bp
+
+    def save(self, world, vehicles_list, color_converter=carla.ColorConverter.Raw):
+        while not self.queue.empty():
+            data = self.queue.get()
+
+            ts = data.timestamp-Sensor.initial_ts
+            if ts - self.ts_tmp > 0.11 or (ts - self.ts_tmp) < 0: #check for 10Hz camera acquisition
+                print("[Error in timestamp] Camera: previous_ts %f -> ts %f" %(self.ts_tmp, ts))
+                sys.exit()
+            self.ts_tmp = ts
+
+            file_path = self.frame_output+"/%04d_%d.png" %(self.sensor_frame_id, self.sensor_id)
+
+            data.convert(color_converter)
+            y = np.frombuffer(data.raw_data, dtype=np.dtype("uint8"))
+            y = np.reshape(y, (data.height, data.width, 4))
+            bgr = y[:,:,:3]
+            bg = bgr[:,:,:2]
+
+            z = np.zeros_like(y[:,:,0])
+            for player_id in vehicles_list:
+
+                velocity = world.get_actor(player_id).get_velocity()
+                v = np.array([velocity.x, velocity.y, velocity.z])
+                v_norm = np.linalg.norm(v, 2)
+
+                if abs(v_norm) >= 0.1:
+                        g = (player_id & 0x00ff) >> 0
+                        b = (player_id & 0xff00) >> 8
+                        new_z = np.where((bg[:,:,0] == b) & (bg[:,:,1] == g), 255, 0)
+                        z = np.add(z, new_z)
+
+            im=Image.fromarray(z.astype(np.uint8))
+            im.convert("L")
+            x = threading.Thread(target=im.save, args=(file_path,))
+
+
+            x.start()
+            print("Export : "+file_path)
+
+            if self.sensor_id == 0:
+                with open(self.folder_output+"/full_ts_camera.txt", 'a') as file:
+                    file.write(str(self.sensor_frame_id)+" "+str(data.timestamp - Sensor.initial_ts)+"\n") #bug in CARLA 0.9.10: timestamp of camera is one tick late. 1 tick = 1/fps_simu seconds
+            self.sensor_frame_id += 1
+
 
 def screenshot(vehicle, world, actor_list, folder_output, transform):
     sensor = world.spawn_actor(RGB.set_attributes(RGB, world.get_blueprint_library()), transform, attach_to=vehicle)
