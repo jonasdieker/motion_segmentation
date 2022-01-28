@@ -56,9 +56,7 @@ class Camera(Sensor):
     def __init__(self, vehicle, world, actor_list, folder_output, transform):
         Sensor.__init__(self, vehicle, world, actor_list, folder_output, transform)
         self.sensor_frame_id = 0
-        self.frame_output = self.folder_output+"/images_%s" %str.lower(self.__class__.__name__)
-        os.makedirs(self.frame_output) if not os.path.exists(self.frame_output) else [os.remove(f) for f in glob.glob(self.frame_output+"/*") if os.path.isfile(f)]
-
+        self.frame_output = self.folder_output
         with open(self.folder_output+"/full_ts_camera.txt", 'w') as file:
             file.write("# frame_id timestamp\n")
 
@@ -74,7 +72,7 @@ class Camera(Sensor):
                 sys.exit()
             self.ts_tmp = ts
 
-            file_path = self.frame_output+"/%04d_%d.png" %(self.sensor_frame_id, self.sensor_id)
+            file_path = self.frame_output+"/%04d.png" %(self.sensor_frame_id)
             x = threading.Thread(target=data.save_to_disk, args=(file_path, color_converter))
             x.start()
             print("Export : "+file_path)
@@ -142,7 +140,7 @@ class IS(Camera):
         camera_ss_bp.set_attribute('image_size_x', '1392')
         camera_ss_bp.set_attribute('image_size_y', '1024')
         camera_ss_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
-        camera_ss_bp.set_attribute('sensor_tick', '0.10') # 2Hz camera
+        camera_ss_bp.set_attribute('sensor_tick', '0.10') # 10Hz camera
         return camera_ss_bp
 
     def save(self, world, vehicles_list, color_converter=carla.ColorConverter.Raw):
@@ -175,7 +173,7 @@ class IS(Camera):
                         b = (player_id & 0xff00) >> 8
                         new_z = np.where((bg[:,:,0] == b) & (bg[:,:,1] == g), 255, 0)
                         z = np.add(z, new_z)
-
+        
             im=Image.fromarray(z.astype(np.uint8))
             im.convert("L")
             x = threading.Thread(target=im.save, args=(file_path,))
