@@ -57,6 +57,8 @@ class Camera(Sensor):
         Sensor.__init__(self, vehicle, world, actor_list, folder_output, transform)
         self.sensor_frame_id = 0
         self.frame_output = self.folder_output
+        # os.makedirs(self.frame_output) if not os.path.exists(self.frame_output) else [os.remove(f) for f in glob.glob(self.frame_output+"/*") if os.path.isfile(f)]
+
         with open(self.folder_output+"/full_ts_camera.txt", 'w') as file:
             file.write("# frame_id timestamp\n")
 
@@ -67,7 +69,7 @@ class Camera(Sensor):
             data = self.queue.get()
 
             ts = data.timestamp-Sensor.initial_ts
-            if ts - self.ts_tmp > 0.11 or (ts - self.ts_tmp) < 0: #check for 10Hz camera acquisition
+            if ts - self.ts_tmp > 0.26 or (ts - self.ts_tmp) < 0: #check for 10Hz camera acquisition
                 print("[Error in timestamp] Camera: previous_ts %f -> ts %f" %(self.ts_tmp, ts))
                 sys.exit()
             self.ts_tmp = ts
@@ -92,10 +94,10 @@ class RGB(Camera):
         camera_bp = blueprint_library.find('sensor.camera.rgb')
 
         camera_bp.set_attribute('image_size_x', '1392')
-        camera_bp.set_attribute('image_size_y', '1024')
+        camera_bp.set_attribute('image_size_y', '512')
         camera_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
         camera_bp.set_attribute('enable_postprocess_effects', 'True')
-        camera_bp.set_attribute('sensor_tick', '0.10') # 10Hz camera
+        camera_bp.set_attribute('sensor_tick', '0.25') # 4Hz camera
         camera_bp.set_attribute('gamma', '2.2')
         camera_bp.set_attribute('motion_blur_intensity', '0')
         camera_bp.set_attribute('motion_blur_max_distortion', '0')
@@ -120,9 +122,9 @@ class SS(Camera):
         camera_ss_bp = blueprint_library.find('sensor.camera.semantic_segmentation')
 
         camera_ss_bp.set_attribute('image_size_x', '1392')
-        camera_ss_bp.set_attribute('image_size_y', '1024')
+        camera_ss_bp.set_attribute('image_size_y', '512')
         camera_ss_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
-        camera_ss_bp.set_attribute('sensor_tick', '0.10') # 10Hz camera
+        camera_ss_bp.set_attribute('sensor_tick', '0.25') # 4Hz camera
         return camera_ss_bp
 
     def save(self, color_converter=carla.ColorConverter.CityScapesPalette):
@@ -138,9 +140,9 @@ class IS(Camera):
         camera_ss_bp = blueprint_library.find('sensor.camera.instance_segmentation')
 
         camera_ss_bp.set_attribute('image_size_x', '1392')
-        camera_ss_bp.set_attribute('image_size_y', '1024')
+        camera_ss_bp.set_attribute('image_size_y', '512')
         camera_ss_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
-        camera_ss_bp.set_attribute('sensor_tick', '0.10') # 10Hz camera
+        camera_ss_bp.set_attribute('sensor_tick', '0.25') # 4Hz camera
         return camera_ss_bp
 
     def save(self, world, vehicles_list, color_converter=carla.ColorConverter.Raw):
@@ -148,12 +150,12 @@ class IS(Camera):
             data = self.queue.get()
 
             ts = data.timestamp-Sensor.initial_ts
-            if ts - self.ts_tmp > 0.11 or (ts - self.ts_tmp) < 0: #check for 10Hz camera acquisition
+            if ts - self.ts_tmp > 0.26 or (ts - self.ts_tmp) < 0: #check for 10Hz camera acquisition
                 print("[Error in timestamp] Camera: previous_ts %f -> ts %f" %(self.ts_tmp, ts))
                 sys.exit()
             self.ts_tmp = ts
 
-            file_path = self.frame_output+"/%04d_%d.png" %(self.sensor_frame_id, self.sensor_id)
+            file_path = self.frame_output+"/%04d.png" %(self.sensor_frame_id)
 
             data.convert(color_converter)
             y = np.frombuffer(data.raw_data, dtype=np.dtype("uint8"))
@@ -162,6 +164,9 @@ class IS(Camera):
             bg = bgr[:,:,:2]
 
             z = np.zeros_like(y[:,:,0])
+
+            #TODO: Extend list to include pedestrians, still check for moving/non-moving
+
             for player_id in vehicles_list:
 
                 velocity = world.get_actor(player_id).get_velocity()
@@ -224,6 +229,8 @@ def spawn_npc(client, nbr_vehicles, nbr_walkers, vehicles_list, all_walkers_id):
         safe = True
         if safe:
                 blueprints = [x for x in blueprints if int(x.get_attribute('number_of_wheels')) == 4]
+                blueprints = [x for x in blueprints if not x.id.endswith('ambulance')]
+                blueprints = [x for x in blueprints if not x.id.endswith('firetruck')]
                 blueprints = [x for x in blueprints if not x.id.endswith('isetta')]
                 blueprints = [x for x in blueprints if not x.id.endswith('carlacola')]
                 blueprints = [x for x in blueprints if not x.id.endswith('cybertruck')]
