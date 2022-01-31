@@ -23,6 +23,9 @@ from datetime import date
 from modules import generator_KITTI as gen
 
 import numpy as np
+import logging
+from datetime import datetime
+import sys
 
 def main():
     start_record_full = time.time()
@@ -31,21 +34,37 @@ def main():
     fps_simu = 200
     time_stop = 2.0
     nbr_frame = 15000 #MAX = 10000
-    nbr_walkers = 10
-    nbr_vehicles = 50
+    nbr_walkers = 30
+    nbr_vehicles = 125
 
     actor_list = []
     vehicles_list = []
     all_walkers_id = []
 
     root = "/Carla_Data_Collection"
-    sequence_offset = int(max(os.listdir(os.path.join(root, "images")))) + 1
+    sequence_offset =  0 if len(os.listdir(os.path.join(root, "images"))) == 0 else int(max(os.listdir(os.path.join(root, "images"))))+1
     
+
     init_settings = None
 
     sequences=10
-    spawn_pts_len = 101
+    spawn_pts_len = 265 #for Town03
+    #Check spawn points present in folder structure, increment until existing
     spawn_points = np.random.choice(spawn_pts_len,sequences, replace=False)
+
+    now = datetime.now()
+    now_string = now.strftime(f"%d-%m-%Y_%H-%M")
+    log_root = root
+    formatter = logging.Formatter('[%(levelname)s] %(message)s')
+    logging.basicConfig(
+    format="[%(levelname)s] %(message)s",
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(os.path.join(log_root, f'{now_string}.log'))
+    ])
+    logger = logging.getLogger()
+
 
     try:
         client = carla.Client('localhost', 2000)
@@ -55,21 +74,30 @@ def main():
             i_sequence += sequence_offset
             client.set_timeout(100.0)
             print(f"Starting sequence {i_sequence}")
-            world = client.load_world("Town10HD_Opt")
+            # world = client.load_world("Town02_Opt")
+            world = client.load_world("Town03_Opt")
             world.unload_map_layer(carla.MapLayer.ParkedVehicles)
+
+            logger.info(f"Spawn point: {spawn_points[i_sequence]}")
             
-            folder_ms_seq = os.path.join(root, "motion_segmentation", str(i_sequence))
-            folder_rgb_seq = os.path.join(root, "images", str(i_sequence))
-            folder_ss_seq = os.path.join(root, "semantic_segmentation", str(i_sequence))
+            folder_ms_seq = os.path.join(root, "motion_segmentation", str('%04d' %(i_sequence)))
+            folder_rgb_seq = os.path.join(root, "images", str('%04d' %(i_sequence)))
+            folder_ss_seq = os.path.join(root, "semantic_segmentation", str('%04d' %(i_sequence)))
 
             os.makedirs(folder_ms_seq) if not os.path.exists(folder_ms_seq) else print("Motion seg dir already exists")
             os.makedirs(folder_rgb_seq) if not os.path.exists(folder_rgb_seq) else print("Image dir already exists")
             os.makedirs(folder_ss_seq) if not os.path.exists(folder_ss_seq) else print("Semantic seg dir already exists")
 
+            # os.makedirs(folder_output) if not os.path.exists(folder_output) else [os.remove(f) for f in glob.glob(folder_output+"/*") if os.path.isfile(f)]
             client.start_recorder(os.path.join(root,"recording.log"))
             
             # Weather
-            world.set_weather(carla.WeatherParameters.WetCloudyNoon)
+            # world.set_weather(carla.WeatherParameters.WetCloudyNoon)
+            weather_list = [1,2,4,5,9,10,12,14,15,17,18,20,21]
+            weather_index = np.random.choice(len(weather_list))
+            world.set_weather(getattr(carla.WeatherParameters, dir(carla.WeatherParameters)[weather_list[weather_index]]))
+
+            logger.info(f"Setting weather to: {dir(carla.WeatherParameters)[weather_list[weather_index]]}")
             
             # Set Synchronous mode
             settings = world.get_settings()
@@ -83,6 +111,7 @@ def main():
             bp_KITTI = blueprint_library.find('vehicle.tesla.model3')
             bp_KITTI.set_attribute('color', '228, 239, 241')
             bp_KITTI.set_attribute('role_name', 'KITTI')
+            print("i_seq",i_sequence)
             start_pose = world.get_map().get_spawn_points()[spawn_points[i_sequence]]
             print(f"Spawning at point {spawn_points[i_sequence]} \n x={start_pose.location.x:.2f}, y = {start_pose.location.y:.2f}, z = {start_pose.location.z:.2f}")
             KITTI = world.spawn_actor(bp_KITTI, start_pose)
@@ -125,10 +154,10 @@ def main():
             print("Start record : ")
             frame_current = 0
             while (frame_current < nbr_frame):
-                if frame_current%100==0:
-                    cam0.save()
-                    cam0_ss.save()
-                    cam0_ms.save(world, vehicles_list)
+                # if frame_current%100==0:
+                cam0.save()
+                cam0_ss.save()
+                cam0_ms.save(world, vehicles_list)
                 gen.follow(KITTI.get_transform(), world)
                 frame_current += 1
                 world.tick()    # Pass to the next simulator frame
