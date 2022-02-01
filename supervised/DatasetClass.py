@@ -72,24 +72,13 @@ class KITTI_MOD_FIXED(Dataset):
 
 
 class ExtendedKittiMod(Dataset):
-    def __init__(self, data_root, transform=None, test=False):
+    def __init__(self, data_root, transform=None):
         self.data_root = data_root
         self.transform = transform
         self.image_paths = []
         self.mask_paths = []
 
-        # self.image_paths = sorted(list(glob.glob(os.path.join(self.data_root, "images/**/data/*.png"))))
-        # self.mask_paths = sorted(list(glob.glob(os.path.join(self.data_root, "masks/**/image_02/*.png"))))
-
-        if test == False:
-            # wanted_dirs = ["0005", "0013", "0014", "0015", "0032", "0051", "0056", "0059", "0060"]
-            # wanted_dirs = ["0013", "0014", "0015", "0018", "0056", "0057", "0059", "0060", "0084"]
-            wanted_dirs = ["0014", "0015", "0018", "0032", "0056", "0057", "0059", "0060", "0084"]
-
-        else:
-            # wanted_dirs = ["0018", "0057", "0084"]
-            # wanted_dirs = ["0005", "0032", "0051"]
-            wanted_dirs = ["0005", "0013", "0051"]
+        wanted_dirs = ["0005", "0013", "0014", "0015", "0018", "0032", "0051", "0056", "0057", "0059", "0060", "0084"]
         
         for sequence_num in wanted_dirs:
             self.image_paths.extend(sorted(list(glob.glob(os.path.join(self.data_root, f"images/2011_09_26_drive_{sequence_num}_sync/data/*.png")))))
@@ -101,23 +90,28 @@ class ExtendedKittiMod(Dataset):
         dirs = []
 
         # removing final image in each sequence as it wont have a pair
+        remove=False
         for i in range(len(self.image_paths)-1):
             path1 = self.image_paths[i]
             path2 = self.image_paths[i+1]
-            if path1.split("/")[-3] != path2.split("/")[-3]:
-                temp_image_paths.remove(path1)
 
             mask1 = self.mask_paths[i]
             mask2 = self.mask_paths[i+1]
-            if mask1.split("/")[-3] != mask2.split("/")[-3]:
+
+            if path1.split("/")[-3] != path2.split("/")[-3]:
+                temp_image_paths.remove(path1)
                 temp_masks_paths.remove(mask1)
+                remove = False
+                continue
+            if remove==True:
+                temp_image_paths.remove(path1)
+                temp_masks_paths.remove(mask1)
+                remove = False
+            elif remove==False:
+                remove = True
 
             if path1.split("/")[-3] not in dirs:
                 dirs.append(path1.split("/")[-3])
-
-            # if path1 in []:
-            #     temp_image_paths.remove(path1)
-            #     temp_masks_paths.remove(mask1)
 
         temp_image_paths = temp_image_paths[:-1]
         temp_masks_paths = temp_masks_paths[:-1]
@@ -157,7 +151,6 @@ class ExtendedKittiMod(Dataset):
 
         # normalizing images so that each image channel (RGB) has a similar distribution
         return (img_concat/255, label_0/255)
-
 
 
 """
