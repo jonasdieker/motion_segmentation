@@ -165,7 +165,12 @@ class IS(Camera):
 
             z = np.zeros_like(y[:,:,0])
 
+            #Extend list to include pedestrians, still check for moving/non-moving
+
             for player_id in moving_list:
+                
+                if not (isinstance(world.get_actor(player_id), carla.libcarla.Vehicle) or isinstance(world.get_actor(player_id), carla.libcarla.Walker)):
+                        continue
 
                 velocity = world.get_actor(player_id).get_velocity()
                 v = np.array([velocity.x, velocity.y, velocity.z])
@@ -177,6 +182,9 @@ class IS(Camera):
                         new_z = np.where((bg[:,:,0] == b) & (bg[:,:,1] == g), 255, 0)
                         z = np.add(z, new_z)
         
+                
+
+
             im=Image.fromarray(z.astype(np.uint8))
             im.convert("L")
             x = threading.Thread(target=im.save, args=(file_path,))
@@ -273,8 +281,9 @@ def spawn_npc(client, nbr_vehicles, nbr_walkers, vehicles_list, all_walkers_id):
 
                 # prepare the light state of the cars to spawn
                 light_state = vls.NONE
-                # car_lights_on = False
-                car_lights_on = True
+                # light_state = vls.LowBeam
+                car_lights_on = False
+                # car_lights_on = True
                 if car_lights_on:
                         light_state = vls.Position | vls.LowBeam | vls.LowBeam
 
