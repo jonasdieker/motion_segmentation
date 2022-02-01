@@ -145,7 +145,7 @@ class IS(Camera):
         camera_ss_bp.set_attribute('sensor_tick', '0.25') # 4Hz camera
         return camera_ss_bp
 
-    def save(self, world, vehicles_list, color_converter=carla.ColorConverter.Raw):
+    def save(self, world, moving_list, color_converter=carla.ColorConverter.Raw):
         while not self.queue.empty():
             data = self.queue.get()
 
@@ -165,9 +165,7 @@ class IS(Camera):
 
             z = np.zeros_like(y[:,:,0])
 
-            #TODO: Extend list to include pedestrians, still check for moving/non-moving
-
-            for player_id in vehicles_list:
+            for player_id in moving_list:
 
                 velocity = world.get_actor(player_id).get_velocity()
                 v = np.array([velocity.x, velocity.y, velocity.z])
@@ -215,7 +213,9 @@ def spawn_npc(client, nbr_vehicles, nbr_walkers, vehicles_list, all_walkers_id):
         world = client.get_world()
 
         traffic_manager = client.get_trafficmanager()
-        traffic_manager.set_global_distance_to_leading_vehicle(1.0)
+        traffic_manager.set_global_distance_to_leading_vehicle(3.0)
+
+        traffic_manager.set_hybrid_physics_radius(75)
         
         #traffic_manager.set_hybrid_physics_mode(True)
         #traffic_manager.set_random_device_seed(args.seed)
@@ -273,7 +273,8 @@ def spawn_npc(client, nbr_vehicles, nbr_walkers, vehicles_list, all_walkers_id):
 
                 # prepare the light state of the cars to spawn
                 light_state = vls.NONE
-                car_lights_on = False
+                # car_lights_on = False
+                car_lights_on = True
                 if car_lights_on:
                         light_state = vls.Position | vls.LowBeam | vls.LowBeam
 

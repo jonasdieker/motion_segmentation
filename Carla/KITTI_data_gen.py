@@ -47,7 +47,7 @@ def main():
 
     init_settings = None
 
-    sequences=10
+    sequences=30
     spawn_pts_len = 265 #for Town03
     #Check spawn points present in folder structure, increment until existing
     spawn_points = np.random.choice(spawn_pts_len,sequences, replace=False)
@@ -141,6 +141,10 @@ def main():
             cam0_ss = gen.SS(KITTI, world, actor_list, folder_ss_seq, cam0_transform)
             cam0_ms = gen.IS(KITTI, world, actor_list, folder_ms_seq, cam0_transform)
 
+            #New list with potentially moving actors (vehicles and pedestrians)
+            moving_list = vehicles_list + all_walkers_id
+            # moving_list = vehicles_list
+
             # Launch KITTI
             KITTI.set_autopilot(True)
 
@@ -154,10 +158,9 @@ def main():
             print("Start record : ")
             frame_current = 0
             while (frame_current < nbr_frame):
-                # if frame_current%100==0:
                 cam0.save()
                 cam0_ss.save()
-                cam0_ms.save(world, vehicles_list)
+                cam0_ms.save(world, moving_list)
                 gen.follow(KITTI.get_transform(), world)
                 frame_current += 1
                 world.tick()    # Pass to the next simulator frame
