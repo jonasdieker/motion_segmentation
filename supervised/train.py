@@ -178,14 +178,15 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, p
 
 def parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", default=1e-5, type=int, help='Learning rate - default: 5e-3')
+    parser.add_argument("--lr", default=1e-5, type=float, help='Learning rate - default: 5e-3')
     parser.add_argument("--batch_size", default=2, type=int, help='Default=2')
-    parser.add_argument("--epochs", default=75, type=int, help='Default=75')
-    parser.add_argument("--patience", default=3, type=float, help='Default=4')
+    parser.add_argument("--epochs", default=50, type=int, help='Default=50')
+    parser.add_argument("--patience", default=3, type=float, help='Default=3')
     parser.add_argument("--lr_scheduler_factor", default=0.25, type=float, help="Learning rate multiplier - default: 3")
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
     parser.add_argument("--gamma", default=2.0, type=float, help='Focal loss gamma - default: 2')
     parser.add_argument("--load_chkpt", '-chkpt', default='0', type=str, help="Loading entire checkpoint path for inference/continue training")
+    parser.add_argument("--dataset_fraction", default=1.0, type=float, help="fraction of dataset to be used")
     return parser
 
 if __name__ == "__main__":
@@ -198,6 +199,7 @@ if __name__ == "__main__":
     lr_scheduler_factor = args.lr_scheduler_factor
     alpha = args.alpha
     gamma = args.gamma
+    dataset_fraction = args.dataset_fraction
 
     # setup time/date for logging/saving models
     now = datetime.now()
@@ -251,10 +253,16 @@ if __name__ == "__main__":
     sigmoid = nn.Sigmoid()
 
     # data split and data loader
-    train_size = int(0.8 *  len(dataset))
-    val_size = len(dataset) - train_size
-    train_set, val_set = torch.utils.data.random_split(dataset, [train_size, val_size], generator = torch.Generator().manual_seed(0))
+    dataset_length = int(len(dataset) * dataset_fraction)
+    train_size = int(0.6 *  dataset_length)
+    val_size = int(0.5*(dataset_length - train_size))
+    test_size = dataset_length - train_size - val_size
+    # taking subset of dataset according to dataset_fraction
+    dataset_idx = list(range(0, dataset_length))
+    dataset = torch.utils.data.Subset(dataset, dataset_idx)
+    train_set, val_set, test_set = torch.utils.data.random_split(dataset, [train_size, val_size, test_size], generator = torch.Generator().manual_seed(0))
     train_loader = DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(dataset=test_set, batch_size=batch_size, shuffle=True)
 
     train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, prev_model, logger)
