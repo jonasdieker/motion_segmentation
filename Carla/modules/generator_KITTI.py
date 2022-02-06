@@ -30,6 +30,8 @@ from PIL import Image
 import logging
 import queue
 import numpy as np
+import math
+import json
 import random
 import threading
 
@@ -130,6 +132,25 @@ class SS(Camera):
     def save(self, color_converter=carla.ColorConverter.CityScapesPalette):
         Camera.save(self, color_converter)
 
+class Depth(Camera):
+    sensor_id_glob = 20
+    def __init__(self, vehicle, world, actor_list, folder_output, transform):
+        Camera.__init__(self, vehicle, world, actor_list, folder_output, transform)
+
+    def set_attributes(self, blueprint_library):
+        camera_ss_bp = blueprint_library.find('sensor.camera.depth')
+
+        camera_ss_bp.set_attribute('image_size_x', '1392')
+        camera_ss_bp.set_attribute('image_size_y', '512')
+        camera_ss_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
+        camera_ss_bp.set_attribute('sensor_tick', '0.25') # 4Hz camera
+        return camera_ss_bp
+
+    def save(self, color_converter=carla.ColorConverter.Depth):
+#     def save(self):
+       Camera.save(self, color_converter)
+        # Camera.save(self)
+
 
 class IS(Camera):
     sensor_id_glob = 10
@@ -145,7 +166,7 @@ class IS(Camera):
         camera_ss_bp.set_attribute('sensor_tick', '0.25') # 4Hz camera
         return camera_ss_bp
 
-    def save(self, world, moving_list, color_converter=carla.ColorConverter.Raw):
+    def save(self, world, moving_list, poses, color_converter=carla.ColorConverter.Raw):
         while not self.queue.empty():
             data = self.queue.get()
 
@@ -181,23 +202,74 @@ class IS(Camera):
                         b = (player_id & 0xff00) >> 8
                         new_z = np.where((bg[:,:,0] == b) & (bg[:,:,1] == g), 255, 0)
                         z = np.add(z, new_z)
-        
-                
-
-
+                        
             im=Image.fromarray(z.astype(np.uint8))
             im.convert("L")
             x = threading.Thread(target=im.save, args=(file_path,))
 
-
             x.start()
             print("Export : "+file_path)
+
+            poses.save(data)
 
             if self.sensor_id == 0:
                 with open(self.folder_output+"/full_ts_camera.txt", 'a') as file:
                     file.write(str(self.sensor_frame_id)+" "+str(data.timestamp - Sensor.initial_ts)+"\n") #bug in CARLA 0.9.10: timestamp of camera is one tick late. 1 tick = 1/fps_simu seconds
             self.sensor_frame_id += 1
 
+class Poses():
+    def __init__(self, sensor) -> None:
+        self.sensor = sensor
+        self.transform_list = [np.eye(4)]
+
+        previous_sensor2world_rot = rotation_carla(self.sensor.sensor.get_transform().rotation)
+        previous_sensor2world_trs = translation_carla(self.sensor.sensor.get_location())
+        self.previous_sensor2world_transform = self.build_se3(previous_sensor2world_rot, previous_sensor2world_trs)
+
+    def save(self, data):
+        current_sensor2world_trs = translation_carla(data.transform.location)
+        current_sensor2world_rot = rotation_carla(data.transform.rotation)
+        current_sensor2world_transform = self.build_se3(current_sensor2world_rot, current_sensor2world_trs)
+
+        frame2frame_transform = self.inverse_se3(self.previous_sensor2world_transform).dot(current_sensor2world_transform)
+
+        self.previous_sensor2world_transform = current_sensor2world_transform
+
+        self.transform_list.append(frame2frame_transform)
+    
+    def write(self, path):
+        dict_export = {'transforms': np.array(self.transform_list).tolist()}
+        with open(os.path.join(path,"transforms.json"), "w") as f:
+            json.dump(dict_export, f)
+
+    def build_se3(self, rotation, translation):
+        se3 = np.hstack((rotation, np.array([translation]).T))
+        se3 = np.vstack((se3,np.array([0,0,0,1])))
+
+        return se3
+
+    def inverse_se3(self, se3_mat):
+        R_T = se3_mat[:3, :3].T
+        new_t = -R_T.dot(se3_mat[:3,-1])
+
+        return self.build_se3(R_T, new_t)
+
+# Function to change rotations in CARLA from left-handed to right-handed reference frame
+def rotation_carla(rotation):
+    cr = math.cos(math.radians(rotation.roll))
+    sr = math.sin(math.radians(rotation.roll))
+    cp = math.cos(math.radians(rotation.pitch))
+    sp = math.sin(math.radians(rotation.pitch))
+    cy = math.cos(math.radians(rotation.yaw))
+    sy = math.sin(math.radians(rotation.yaw))
+    return np.array([[cy*cp, -cy*sp*sr+sy*cr, -cy*sp*cr-sy*sr],[-sy*cp, sy*sp*sr+cy*cr, sy*sp*cr-cy*sr],[sp, cp*sr, cp*cr]])
+
+# Function to change translations in CARLA from left-handed to right-handed reference frame
+def translation_carla(location):
+    if isinstance(location, np.ndarray):
+        return location*(np.array([[1],[-1],[1]]))
+    else:
+        return np.array([location.x, -location.y, location.z])
 
 def screenshot(vehicle, world, actor_list, folder_output, transform):
     sensor = world.spawn_actor(RGB.set_attributes(RGB, world.get_blueprint_library()), transform, attach_to=vehicle)

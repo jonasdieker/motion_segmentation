@@ -4,6 +4,7 @@
 
 import glob
 import os
+from turtle import pos
 
 #Not necessary for pip installed Carla 0.9.12+
 # import sys
@@ -23,6 +24,7 @@ from datetime import date
 from modules import generator_KITTI as gen
 
 import numpy as np
+import json
 import logging
 from datetime import datetime
 import sys
@@ -33,8 +35,8 @@ def main():
     # fps_simu = 1000.0
     fps_simu = 200
     time_stop = 2.0
-    nbr_frame = 15000 #MAX = 10000
-    nbr_walkers = 30
+    nbr_frame = 10000 #MAX = 10000
+    nbr_walkers = 0
     nbr_vehicles = 125
 
     actor_list = []
@@ -43,11 +45,10 @@ def main():
 
     root = "/Carla_Data_Collection"
     sequence_offset =  0 if len(os.listdir(os.path.join(root, "images"))) == 0 else int(max(os.listdir(os.path.join(root, "images"))))+1
-    
 
     init_settings = None
 
-    sequences=30
+    sequences=75
     spawn_pts_len = 265 #for Town03
     #Check spawn points present in folder structure, increment until existing
     spawn_points = np.random.choice(spawn_pts_len,sequences, replace=False)
@@ -83,10 +84,15 @@ def main():
             folder_ms_seq = os.path.join(root, "motion_segmentation", str('%04d' %(i_sequence)))
             folder_rgb_seq = os.path.join(root, "images", str('%04d' %(i_sequence)))
             folder_ss_seq = os.path.join(root, "semantic_segmentation", str('%04d' %(i_sequence)))
+            folder_depth_seq = os.path.join(root, "depth", str('%04d' %(i_sequence)))
 
             os.makedirs(folder_ms_seq) if not os.path.exists(folder_ms_seq) else print("Motion seg dir already exists")
             os.makedirs(folder_rgb_seq) if not os.path.exists(folder_rgb_seq) else print("Image dir already exists")
             os.makedirs(folder_ss_seq) if not os.path.exists(folder_ss_seq) else print("Semantic seg dir already exists")
+            os.makedirs(folder_depth_seq) if not os.path.exists(folder_depth_seq) else print("Depth dir already exists")
+
+            folder_transforms = os.path.join(root, "Transformations", str('%04d' %(i_sequence)))
+            os.makedirs(folder_transforms) if not os.path.exists(folder_transforms) else print("Transform dir already exists")
 
             # os.makedirs(folder_output) if not os.path.exists(folder_output) else [os.remove(f) for f in glob.glob(folder_output+"/*") if os.path.isfile(f)]
             client.start_recorder(os.path.join(root,"recording.log"))
@@ -138,9 +144,12 @@ def main():
             gen.RGB.sensor_id_glob = 0
             gen.SS.sensor_id_glob = 10
             cam0 = gen.RGB(KITTI, world, actor_list, folder_rgb_seq, cam0_transform)
+            # poses = gen.Poses(cam0)
             cam0_ss = gen.SS(KITTI, world, actor_list, folder_ss_seq, cam0_transform)
-            cam0_ms = gen.IS(KITTI, world, actor_list, folder_ms_seq, cam0_transform)
+            cam0_depth = gen.Depth(KITTI, world, actor_list, folder_depth_seq, cam0_transform)
+            cam0_is = gen.IS(KITTI, world, actor_list, folder_ms_seq, cam0_transform)
 
+        
             #New list with potentially moving actors (vehicles and pedestrians)
             moving_list = vehicles_list + all_walkers_id
             # moving_list = vehicles_list
@@ -153,6 +162,8 @@ def main():
             
             # All sensors produce first data at the same time (this ts)
             gen.Sensor.initial_ts = world.get_snapshot().timestamp.elapsed_seconds
+
+            poses = gen.Poses(cam0)
             
             start_record = time.time()
             print("Start record : ")
@@ -160,11 +171,15 @@ def main():
             while (frame_current < nbr_frame):
                 cam0.save()
                 cam0_ss.save()
-                cam0_ms.save(world, moving_list)
+                cam0_is.save(world, moving_list, poses)
+                cam0_depth.save()
+
                 gen.follow(KITTI.get_transform(), world)
                 frame_current += 1
                 world.tick()    # Pass to the next simulator frame
             
+            poses.write(folder_transforms)
+
             print('Destroying %d vehicles' % len(vehicles_list))
             client.apply_batch([carla.command.DestroyActor(x) for x in vehicles_list])
             vehicles_list.clear()
