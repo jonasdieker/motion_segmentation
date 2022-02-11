@@ -5,7 +5,7 @@ import torch.optim as optim
 import torchvision.transforms as transforms
 from torchvision.ops.focal_loss import sigmoid_focal_loss
 from torch.utils.data import DataLoader
-from DatasetClass import KITTI_MOD_FIXED, ExtendedKittiMod
+from DatasetClass import KITTI_MOD_FIXED, ExtendedKittiMod, CarlaMotionSeg
 from ModelClass import UNET, UNET_Mod
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -178,11 +178,11 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, p
 
 def parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", default=1e-5, type=float, help='Learning rate - default: 5e-3')
+    parser.add_argument("--lr", default=1.25e-5, type=float, help='Learning rate - default: 5e-3')
     parser.add_argument("--batch_size", default=2, type=int, help='Default=2')
     parser.add_argument("--epochs", default=50, type=int, help='Default=50')
-    parser.add_argument("--patience", default=3, type=float, help='Default=3')
-    parser.add_argument("--lr_scheduler_factor", default=0.25, type=float, help="Learning rate multiplier - default: 3")
+    parser.add_argument("--patience", default=6, type=float, help='Default=3')
+    parser.add_argument("--lr_scheduler_factor", default=0.5, type=float, help="Learning rate multiplier - default: 3")
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
     parser.add_argument("--gamma", default=2.0, type=float, help='Focal loss gamma - default: 2')
     parser.add_argument("--load_chkpt", '-chkpt', default='0', type=str, help="Loading entire checkpoint path for inference/continue training")
@@ -239,12 +239,13 @@ if __name__ == "__main__":
 
     # dataset
     # data_root = '/storage/remote/atcremers40/motion_seg/datasets/KITTI_MOD_fixed/training/'
-    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Extended_MOD_Masks/"
+    # data_root = "/storage/remote/atcremers40/motion_seg/datasets/Extended_MOD_Masks/"
+    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Carla_Annotation/Carla_Export/"
     data_transforms = transforms.Compose([
         transforms.ToTensor()
     ])
-    # dataset = KITTI_MOD_FIXED(data_root, data_transforms)
-    dataset = ExtendedKittiMod(data_root)
+    # dataset = ExtendedKittiMod(data_root)
+    dataset = CarlaMotionSeg(data_root)
 
     # initialise tensorboard
     writer = SummaryWriter("/storage/remote/atcremers40/motion_seg/runs/" + now_string)

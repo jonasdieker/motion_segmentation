@@ -153,6 +153,85 @@ class ExtendedKittiMod(Dataset):
         return (img_concat/255, label_0/255)
 
 
+class CarlaMotionSeg(Dataset):
+    def __init__(self, data_root, transform=None):
+        self.data_root = data_root
+        self.transform = transform
+        self.image_paths = []
+        self.mask_paths = []
+        
+        self.image_paths.extend(sorted(list(glob.glob(os.path.join(self.data_root, f"images/**/*.png")))))
+        self.mask_paths.extend(sorted(list(glob.glob(os.path.join(self.data_root, f"motion_segmentation/**/*.png")))))
+
+        temp_image_paths = self.image_paths.copy()
+        temp_masks_paths = self.mask_paths.copy()
+
+        dirs = []
+
+        # removing final image in each sequence as it wont have a pair
+        remove=False
+        for i in range(len(self.image_paths)-1):
+            path1 = self.image_paths[i]
+            path2 = self.image_paths[i+1]
+
+            mask1 = self.mask_paths[i]
+            mask2 = self.mask_paths[i+1]
+
+            if path1.split("/")[-2] != path2.split("/")[-2]:
+                temp_image_paths.remove(path1)
+                temp_masks_paths.remove(mask1)
+                remove = False
+                continue
+            if remove==True:
+                temp_image_paths.remove(path1)
+                temp_masks_paths.remove(mask1)
+                remove = False
+            elif remove==False:
+                remove = True
+
+            if path1.split("/")[-2] not in dirs:
+                dirs.append(path1.split("/")[-2])
+
+        temp_image_paths = temp_image_paths[:-1]
+        temp_masks_paths = temp_masks_paths[:-1]
+
+        self.image_paths = temp_image_paths
+        self.mask_paths = temp_masks_paths
+
+        print(f"dirs loaded:\n{dirs}")
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def get_pair_image(self, path):
+        img_name = path.split("/")[-1]
+        img_num = int(img_name.split(".")[0])
+        pair_name = f"{img_num+1:04}.png"
+        pair_path = os.path.join("/".join(path.split("/")[:-1]), pair_name)
+
+        return pair_path
+
+    def __getitem__(self, idx):
+
+        image_0 = np.array(Image.open(self.image_paths[idx]), np.float32)[:,:,:3]
+        image_1 = np.array(Image.open(self.get_pair_image(self.image_paths[idx])), np.float32)[:,:,:3]
+
+        label_0 = torch.from_numpy(np.array(Image.open(self.mask_paths[idx]), np.float32))
+        label_0 = label_0[None, :, :]
+        
+        if self.transform:
+            img_0_tensor = self.transform(image_0)
+            img_1_tensor = self.transform(image_1)
+            img_concat = torch.vstack([img_0_tensor.permute((2,0,1)), img_1_tensor.permute((2,0,1))])
+        else:
+            img_0_tensor = torch.from_numpy(image_0)
+            img_1_tensor = torch.from_numpy(image_1)
+            img_concat = torch.vstack([img_0_tensor.permute((2,0,1)), img_1_tensor.permute((2,0,1))])
+
+        # normalizing images so that each image channel (RGB) has a similar distribution
+        return (img_concat/255, label_0/255)
+
+
 """
 #Example
 
@@ -168,7 +247,7 @@ dataloader= {
 input, gt = next(iter(dataloader["train"]))
 """
 
-def test():
+def test_Kitti():
     data_root = '/storage/remote/atcremers40/motion_seg/datasets/KITTI_MOD_fixed/training/'
     data_transforms = transforms.Compose([
         transforms.ToTensor()
@@ -183,7 +262,13 @@ def test_ExtendedKittiMod():
     item = dataset.__getitem__(0)
     print(f"len of dataset: {len(dataset)}\nshape of data: {item[0].shape}\nshape of targets: {item[1].shape}")
 
+def test_Carla():
+    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Carla_Annotation/Carla_Export/"
+    dataset = CarlaMotionSeg(data_root)
+    item = dataset.__getitem__(0)
+    print(f"len of dataset: {len(dataset)}\nshape of data: {item[0].shape}\nshape of targets: {item[1].shape}")
+
 
 if __name__ == "__main__":
-    test_ExtendedKittiMod()
-    #test()
+    # test_ExtendedKittiMod()
+    test_Carla()
