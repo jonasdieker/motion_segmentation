@@ -35,6 +35,9 @@ import json
 import random
 import threading
 
+import matplotlib.pyplot as plt
+from sklearn import discriminant_analysis
+
 def sensor_callback(ts, sensor_data, sensor_queue):
     sensor_queue.put(sensor_data)
 
@@ -95,7 +98,7 @@ class RGB(Camera):
     def set_attributes(self, blueprint_library):
         camera_bp = blueprint_library.find('sensor.camera.rgb')
 
-        camera_bp.set_attribute('image_size_x', '1392')
+        camera_bp.set_attribute('image_size_x', '1382')
         camera_bp.set_attribute('image_size_y', '512')
         camera_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
         camera_bp.set_attribute('enable_postprocess_effects', 'True')
@@ -123,7 +126,7 @@ class SS(Camera):
     def set_attributes(self, blueprint_library):
         camera_ss_bp = blueprint_library.find('sensor.camera.semantic_segmentation')
 
-        camera_ss_bp.set_attribute('image_size_x', '1392')
+        camera_ss_bp.set_attribute('image_size_x', '1382')
         camera_ss_bp.set_attribute('image_size_y', '512')
         camera_ss_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
         camera_ss_bp.set_attribute('sensor_tick', '0.25') # 4Hz camera
@@ -140,7 +143,7 @@ class Depth(Camera):
     def set_attributes(self, blueprint_library):
         camera_ss_bp = blueprint_library.find('sensor.camera.depth')
 
-        camera_ss_bp.set_attribute('image_size_x', '1392')
+        camera_ss_bp.set_attribute('image_size_x', '1382')
         camera_ss_bp.set_attribute('image_size_y', '512')
         camera_ss_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
         camera_ss_bp.set_attribute('sensor_tick', '0.25') # 4Hz camera
@@ -156,11 +159,13 @@ class IS(Camera):
     sensor_id_glob = 10
     def __init__(self, vehicle, world, actor_list, folder_output, transform):
         Camera.__init__(self, vehicle, world, actor_list, folder_output, transform)
+        self.vehicle = vehicle
+        # self.poses = poses
 
     def set_attributes(self, blueprint_library):
         camera_ss_bp = blueprint_library.find('sensor.camera.instance_segmentation')
 
-        camera_ss_bp.set_attribute('image_size_x', '1392')
+        camera_ss_bp.set_attribute('image_size_x', '1382')
         camera_ss_bp.set_attribute('image_size_y', '512')
         camera_ss_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
         camera_ss_bp.set_attribute('sensor_tick', '0.25') # 4Hz camera
@@ -216,6 +221,83 @@ class IS(Camera):
                 with open(self.folder_output+"/full_ts_camera.txt", 'a') as file:
                     file.write(str(self.sensor_frame_id)+" "+str(data.timestamp - Sensor.initial_ts)+"\n") #bug in CARLA 0.9.10: timestamp of camera is one tick late. 1 tick = 1/fps_simu seconds
             self.sensor_frame_id += 1
+
+class OptFlow(Camera):
+    sensor_id_glob = 10
+    def __init__(self, vehicle, world, actor_list, folder_output, transform):
+        Camera.__init__(self, vehicle, world, actor_list, folder_output, transform)
+        self.opt_flow = []
+
+    def set_attributes(self, blueprint_library):
+        camera_ss_bp = blueprint_library.find('sensor.camera.optical_flow')
+
+        camera_ss_bp.set_attribute('image_size_x', '1382')
+        camera_ss_bp.set_attribute('image_size_y', '512')
+        camera_ss_bp.set_attribute('fov', '72') #72 degrees # Always fov on width even if width is different than height
+        camera_ss_bp.set_attribute('sensor_tick', '0.25') # 4Hz camera
+        return camera_ss_bp
+
+    def save(self):
+        while not self.queue.empty():
+            data = self.queue.get()
+
+            ts = data.timestamp-Sensor.initial_ts
+            if ts - self.ts_tmp > 0.26 or (ts - self.ts_tmp) < 0: #check for 10Hz camera acquisition
+                print("[Error in timestamp] Camera: previous_ts %f -> ts %f" %(self.ts_tmp, ts))
+                sys.exit()
+            self.ts_tmp = ts
+
+            file_path = self.frame_output+"/%04d.png" %(self.sensor_frame_id)
+
+            #Optical flow visualization
+            image = data.get_color_coded_flow()
+            y = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
+            y = np.reshape(y, (data.height, data.width, 4)) 
+            bgr = y[:,:,:3]
+            bgr = bgr[:,:,::-1]
+
+            #Optical flow v_x and v_y
+            x = np.frombuffer(data.raw_data, dtype=np.dtype("float32"))
+            opt_flow_raw = np.reshape(x, (data.height, data.width, 2)) #height, width, (v_x, v_y)
+            opt_flow = opt_flow_raw.copy()
+            opt_flow[:, :, 0] = opt_flow[:, :, 0]*(data.height * -0.5) #scaling from [-2,2] CARLA encoding
+            opt_flow[:, :, 1] = opt_flow[:, :, 1]*(data.width * 0.5)
+
+            self.opt_flow.append(opt_flow)
+
+            #Visualization of flow vectors 
+            fig = plt.figure(figsize = (10,6))  
+            plt.xlim(0,1382)  
+            plt.ylim(0,512)    
+            plt.gca().invert_yaxis()
+
+            disc_step = 30 
+            offset = 10
+        
+            for i in range(offset, opt_flow.shape[0]-offset, disc_step):
+                for j in range(offset,opt_flow.shape[1]-offset, disc_step):
+                    plt.arrow(j,i,opt_flow[i,j,0], opt_flow[i,j,1], head_width= 3)
+            fig.show()
+            flow_path = self.frame_output+"/%04d_flow.png" %(self.sensor_frame_id)
+            plt.savefig(flow_path)
+
+            #Saving opt flow color visualization
+            im=Image.fromarray(bgr.astype(np.uint8))
+            x = threading.Thread(target=im.save, args=(file_path,))
+
+            x.start()
+            print("Export : "+file_path)
+
+            if self.sensor_id == 0:
+                with open(self.folder_output+"/full_ts_camera.txt", 'a') as file:
+                    file.write(str(self.sensor_frame_id)+" "+str(data.timestamp - Sensor.initial_ts)+"\n") #bug in CARLA 0.9.10: timestamp of camera is one tick late. 1 tick = 1/fps_simu seconds
+            self.sensor_frame_id += 1
+    
+    def write(self, path):
+        dict_export = {'opt_flow': np.array(self.opt_flow).tolist()}
+        with open(os.path.join(path,"opt_flow.json"), "w") as f:
+            json.dump(dict_export, f)
+
 
 class Poses():
     def __init__(self, sensor) -> None:
