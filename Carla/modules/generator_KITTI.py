@@ -149,7 +149,7 @@ class Depth(Camera):
         camera_ss_bp.set_attribute('sensor_tick', '0.25') # 4Hz camera
         return camera_ss_bp
 
-    def save(self, color_converter=carla.ColorConverter.Depth):
+    def save(self, color_converter=carla.ColorConverter.LogarithmicDepth):
 #     def save(self):
        Camera.save(self, color_converter)
         # Camera.save(self)
@@ -265,21 +265,23 @@ class OptFlow(Camera):
 
             self.opt_flow.append(opt_flow)
 
-            #Visualization of flow vectors 
-            fig = plt.figure(figsize = (10,6))  
-            plt.xlim(0,1382)  
-            plt.ylim(0,512)    
-            plt.gca().invert_yaxis()
+            # #Visualization of flow vectors 
+            
+            # fig = plt.figure(figsize = (10,6))  
+            # plt.xlim(0,1382)  
+            # plt.ylim(0,512)    
+            # plt.gca().invert_yaxis()
 
-            disc_step = 30 
-            offset = 10
+            # disc_step = 30 
+            # offset = 10
         
-            for i in range(offset, opt_flow.shape[0]-offset, disc_step):
-                for j in range(offset,opt_flow.shape[1]-offset, disc_step):
-                    plt.arrow(j,i,opt_flow[i,j,0], opt_flow[i,j,1], head_width= 3)
-            fig.show()
-            flow_path = self.frame_output+"/%04d_flow.png" %(self.sensor_frame_id)
-            plt.savefig(flow_path)
+            # for i in range(offset, opt_flow.shape[0]-offset, disc_step):
+            #     for j in range(offset,opt_flow.shape[1]-offset, disc_step):
+            #         plt.arrow(j,i,opt_flow[i,j,0], opt_flow[i,j,1], head_width= 3)
+            # fig.show()
+
+            # flow_path = self.frame_output+"/%04d_flow.png" %(self.sensor_frame_id)
+            # plt.savefig(flow_path)
 
             #Saving opt flow color visualization
             im=Image.fromarray(bgr.astype(np.uint8))
@@ -309,10 +311,11 @@ class Poses():
         self.previous_sensor2world_transform = self.build_se3(previous_sensor2world_rot, previous_sensor2world_trs)
 
     def save(self, data):
-        current_sensor2world_trs = translation_carla(data.transform.location)
-        current_sensor2world_rot = rotation_carla(data.transform.rotation)
+        current_sensor2world_trs = translation_carla(data.transform.location) #Sensor location in world frame
+        current_sensor2world_rot = rotation_carla(data.transform.rotation) #Sensor rotation in world frame
         current_sensor2world_transform = self.build_se3(current_sensor2world_rot, current_sensor2world_trs)
 
+        # world_T_sensor(i).T * world_T_sensor(i+1) -> sensor(i+1)_2_sensor(i)
         frame2frame_transform = self.inverse_se3(self.previous_sensor2world_transform).dot(current_sensor2world_transform)
 
         self.previous_sensor2world_transform = current_sensor2world_transform

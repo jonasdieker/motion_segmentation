@@ -48,14 +48,15 @@ def main():
 
     init_settings = None
 
-    sequences=30
+    sequences=50
     spawn_pts_len = 265 #for Town03
     #Check spawn points present in folder structure, increment until existing
     spawn_points = np.random.choice(spawn_pts_len,sequences, replace=False)
 
     now = datetime.now()
     now_string = now.strftime(f"%d-%m-%Y_%H-%M")
-    log_root = root
+    log_root = os.path.join(root, "logs")
+    os.makedirs(log_root) if not os.path.exists(log_root) else print("Log root already exists")
     formatter = logging.Formatter('[%(levelname)s] %(message)s')
     logging.basicConfig(
     format="[%(levelname)s] %(message)s",
@@ -93,7 +94,7 @@ def main():
             os.makedirs(folder_depth_seq) if not os.path.exists(folder_depth_seq) else print("Depth dir already exists")
             os.makedirs(folder_opt_flow_seq) if not os.path.exists(folder_opt_flow_seq) else print("Opt flow dir already exists")
 
-            folder_transforms = os.path.join(root, "Transformations", str('%04d' %(i_sequence)))
+            folder_transforms = os.path.join(root, "transformations", str('%04d' %(i_sequence)))
             os.makedirs(folder_transforms) if not os.path.exists(folder_transforms) else print("Transform dir already exists")
 
             # os.makedirs(folder_output) if not os.path.exists(folder_output) else [os.remove(f) for f in glob.glob(folder_output+"/*") if os.path.isfile(f)]
