@@ -35,8 +35,7 @@ import json
 import random
 import threading
 
-import matplotlib.pyplot as plt
-from sklearn import discriminant_analysis
+# import matplotlib.pyplot as plt
 
 def sensor_callback(ts, sensor_data, sensor_queue):
     sensor_queue.put(sensor_data)
@@ -296,9 +295,9 @@ class OptFlow(Camera):
             self.sensor_frame_id += 1
     
     def write(self, path):
-        dict_export = {'opt_flow': np.array(self.opt_flow).tolist()}
-        with open(os.path.join(path,"opt_flow.json"), "w") as f:
-            json.dump(dict_export, f)
+        opt_flow_path = os.path.join(path, "opt_flow.pkl")
+        with open(opt_flow_path, "wb") as f:
+            np.save(f, np.array(self.opt_flow))
 
 
 class Poses():
