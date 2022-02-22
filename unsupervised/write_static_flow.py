@@ -114,7 +114,7 @@ def get_flow(depth0, image_size_x, image_size_y, trs, K=None):
 
     return flow
 
-def vis_flow(flow):
+def vis_flow(opt_flow):
     # create HSV & make Value a constant
     hsv = np.zeros((512,1382,3))
     hsv[:,:,1] = 255
@@ -169,8 +169,4 @@ if __name__ == "__main__":
         static_flow_path = os.path.join(sequence_path, "static_flow.pkl")
         with open(static_flow_path, "wb") as f:
             np.save(f, np.array(static_flow))
-
-
-
-
 
