@@ -176,14 +176,13 @@ def main():
                 cam0_ss.save()
                 cam0_is.save(world, moving_list, poses)
                 cam0_depth.save()
-                cam0_of.save()
+                cam0_of.save(folder_opt_flow_seq)
 
                 gen.follow(KITTI.get_transform(), world)
                 frame_current += 1
                 world.tick()    # Pass to the next simulator frame
             
-            poses.write(folder_transforms)
-            cam0_of.write(folder_opt_flow_seq)
+            poses.write_pose(folder_transforms)
 
             print('Destroying %d vehicles' % len(vehicles_list))
             client.apply_batch([carla.command.DestroyActor(x) for x in vehicles_list])

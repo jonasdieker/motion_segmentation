@@ -225,7 +225,7 @@ class OptFlow(Camera):
     sensor_id_glob = 10
     def __init__(self, vehicle, world, actor_list, folder_output, transform):
         Camera.__init__(self, vehicle, world, actor_list, folder_output, transform)
-        self.opt_flow = []
+        # self.opt_flow = []
 
     def set_attributes(self, blueprint_library):
         camera_ss_bp = blueprint_library.find('sensor.camera.optical_flow')
@@ -236,7 +236,7 @@ class OptFlow(Camera):
         camera_ss_bp.set_attribute('sensor_tick', '0.25') # 4Hz camera
         return camera_ss_bp
 
-    def save(self):
+    def save(self, opt_flow_path):
         while not self.queue.empty():
             data = self.queue.get()
 
@@ -262,10 +262,13 @@ class OptFlow(Camera):
             opt_flow[:, :, 0] = opt_flow[:, :, 0]*(data.height * -0.5) #scaling from [-2,2] CARLA encoding
             opt_flow[:, :, 1] = opt_flow[:, :, 1]*(data.width * 0.5)
 
-            self.opt_flow.append(opt_flow)
+            # self.opt_flow.append(opt_flow)
+            self.opt_flow = opt_flow
+            self.write_opt_flow(opt_flow_path, self.sensor_frame_id)
+
 
             # #Visualization of flow vectors 
-            
+
             # fig = plt.figure(figsize = (10,6))  
             # plt.xlim(0,1382)  
             # plt.ylim(0,512)    
@@ -282,6 +285,7 @@ class OptFlow(Camera):
             # flow_path = self.frame_output+"/%04d_flow.png" %(self.sensor_frame_id)
             # plt.savefig(flow_path)
 
+
             #Saving opt flow color visualization
             im=Image.fromarray(bgr.astype(np.uint8))
             x = threading.Thread(target=im.save, args=(file_path,))
@@ -294,10 +298,10 @@ class OptFlow(Camera):
                     file.write(str(self.sensor_frame_id)+" "+str(data.timestamp - Sensor.initial_ts)+"\n") #bug in CARLA 0.9.10: timestamp of camera is one tick late. 1 tick = 1/fps_simu seconds
             self.sensor_frame_id += 1
     
-    def write(self, path):
-        opt_flow_path = os.path.join(path, "opt_flow.pkl")
+    def write_opt_flow(self, path, id):
+        opt_flow_path = os.path.join(path, "%04d.pkl" %(id))
         with open(opt_flow_path, "wb") as f:
-            np.save(f, np.array(self.opt_flow))
+            np.save(f, self.opt_flow)
 
 
 class Poses():
@@ -321,7 +325,7 @@ class Poses():
 
         self.transform_list.append(frame2frame_transform)
     
-    def write(self, path):
+    def write_pose(self, path):
         dict_export = {'transforms': np.array(self.transform_list).tolist()}
         with open(os.path.join(path,"transforms.json"), "w") as f:
             json.dump(dict_export, f)
