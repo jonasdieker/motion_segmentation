@@ -134,7 +134,7 @@ if __name__ == "__main__":
 
     print("writing static flow...")
 
-    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Carla_tmp/"
+    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Carla_unsupervised/"
     depth_root = os.path.join(data_root, "depth")
     trs_root = os.path.join(data_root, "transformations")
     static_flow_root = os.path.join(data_root, "static_flow")
@@ -150,14 +150,6 @@ if __name__ == "__main__":
         with open(transformations, "r") as f:
             trs_list = json.load(f)["transforms"]
 
-        static_flow = []
-        for frame_idx in range(len(depths)-1):
-
-            depth = plt.imread(depths[frame_idx])
-            trs = np.array(trs_list[frame_idx+1])
-            flow = get_flow(depth, 1382, 512, trs)
-            static_flow.append(flow)
-
         if not os.path.isdir(static_flow_root):
             os.mkdir(static_flow_root)
 
@@ -166,7 +158,13 @@ if __name__ == "__main__":
         if not os.path.isdir(sequence_path):
             os.mkdir(sequence_path)
 
-        static_flow_path = os.path.join(sequence_path, "static_flow.pkl")
-        with open(static_flow_path, "wb") as f:
-            np.save(f, np.array(static_flow))
+        for frame_idx in range(len(depths)-1):
+
+            depth = plt.imread(depths[frame_idx])
+            trs = np.array(trs_list[frame_idx+1])
+            flow = get_flow(depth, 1382, 512, trs)
+
+            static_flow_path = os.path.join(sequence_path, "%04d.pkl" %(frame_idx))
+            with open(static_flow_path, "wb") as f:
+                np.save(f, np.array(flow))
 
