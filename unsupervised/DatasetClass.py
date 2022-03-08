@@ -29,12 +29,14 @@ class CarlaUnsupervised(Dataset):
         self.mask_paths = []
         self.static_flow = []
         self.dynamic_flow = []
+        self.depth_paths = []
         
         # get list of sequence paths
         image_seqs = (sorted(list(glob.glob(os.path.join(self.data_root, "images/**/")))))
         mask_seqs = (sorted(list(glob.glob(os.path.join(self.data_root, "motion_segmentation/**/")))))
         static_flow_seqs = (sorted(list(glob.glob(os.path.join(self.data_root, "static_flow/**/")))))
         dynamic_flow_seqs = (sorted(list(glob.glob(os.path.join(self.data_root, "opt_flow/**/")))))
+        depth_seqs = (sorted(list(glob.glob(os.path.join(self.data_root, "opt_flow/**/")))))
 
         self.sequence_number = len(image_seqs)
 
@@ -46,6 +48,7 @@ class CarlaUnsupervised(Dataset):
             self.dynamic_flow.extend(sorted(list(glob.glob(os.path.join(dynamic_flow_seqs[seq], "*.pkl"))))[10:-1])
             # self.static_flow.extend(np.load(os.path.join(static_flow_seqs[seq], "static_flow.pkl"))[10:-1])
             # self.dynamic_flow.extend(np.load(os.path.join(dynamic_flow_seqs[seq], "opt_flow.pkl"))[10:-1])
+            self.depth_paths.extend(sorted(list(glob.glob(os.path.join(depth_seqs[seq], "*.png"))))[10:-1])
         #TODO: Ensure all files are loaded, otherwise print/log erros
 
     def __len__(self):
@@ -66,6 +69,11 @@ class CarlaUnsupervised(Dataset):
 
         label_0 = torch.from_numpy(np.array(Image.open(self.mask_paths[idx]), np.float32))
         label_0 = label_0[None, :, :]
+
+        depth_0 = torch.from_numpy(np.array(Image.open(self.depth_paths[idx]), np.float32))
+        depth_1 = torch.from_numpy(np.array(Image.open(self.get_pair_image(self.depth_paths[idx])), np.float32))
+
+        depth_concat = torch.vstack([depth_0.permute((2,0,1)), depth_1.permute((2,0,1))])
         
         if self.transform:
             img_0_tensor = self.transform(image_0)
@@ -82,21 +90,27 @@ class CarlaUnsupervised(Dataset):
 
         #Return rgb image, dynamic_opt_flow array, static_opt_flow_array, motion_mask 
         if self.test:
-            return (img_concat/255, dynamic_flow, static_flow, label_0/255)
+            return (img_concat/255, dynamic_flow, static_flow, depth_concat, label_0/255)
         ##Return rgb image, dynamic_opt_flow array, static_opt_flow_array
         else:
-            return (img_concat/255, dynamic_flow, static_flow)
+            return (img_concat/255, dynamic_flow, static_flow, depth_concat)
 
 
-def test_Carla():
-    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Carla_tmp/"
-    dataset = CarlaUnsupervised(data_root)
+def test_Carla(test = False):
+    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Carla_unsupervised/"
+    if test:
+        dataset = CarlaUnsupervised(data_root, test)
+    else:
+        dataset = CarlaUnsupervised(data_root)
     item = dataset.__getitem__(0)
     print(f"len of dataset: {len(dataset)}\n \
     shape of rgb: {item[0].shape}\n \
     shape of dynamic flow: {item[1].shape}\n \
-    shape of static flow: {item[2].shape}")
+    shape of static flow: {item[2].shape}\n \
+    shape of depth: {item[3].shape}\n ")
+    if test:
+        print(f"shape of motion_segmentation: {item[4].shape}")
 
 
 if __name__ == "__main__":
-    test_Carla()
+    test_Carla(test=True)

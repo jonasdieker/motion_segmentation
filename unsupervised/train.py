@@ -1,3 +1,9 @@
+import sys
+import os
+import gc
+from datetime import datetime
+import time
+
 import torch
 import torchvision
 import torch.nn as nn
@@ -6,20 +12,17 @@ import torchvision.transforms as transforms
 from torchvision.ops.focal_loss import sigmoid_focal_loss
 from torch.utils.data import DataLoader
 from DatasetClass import CarlaUnsupervised
-from ModelClass import UNET, UNET_Mod
+from supervised.ModelClass import UNET, UNET_Mod
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-import sys
-import os
-import gc
-import matplotlib.pyplot as plt
+
 import numpy as np
-from datetime import datetime
-import time
-import matplotlib.pyplot as plt
+from numpy.matlib import repmat
+# import matplotlib.pyplot as plt
 import PIL
 import logging
 import argparse
+
 
 def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor):
     SMOOTH = 1e-6
@@ -55,7 +58,7 @@ def get_photometric_error(flow, img1, img2):
 
     u_coords = np.flip(u_coords).reshape(-1)
     v_coords = np.flip(v_coords).reshape(-1)
-    coords1 = np.array([u_coords, v_coords]).reshape(-1,2)
+    coords1 = np.stack((u_coords, v_coords), axis=-1)
 
     # reshape images
     I1 = img1.reshape((-1,3))
@@ -63,19 +66,20 @@ def get_photometric_error(flow, img1, img2):
 
     flow_reshaped = flow.reshape((-1,2))
     coords2 = (coords1 + flow_reshaped).astype(int)
-    in_image = (coords2[:,0] < 0) | (coords2[:,0] > image_size_y) | (coords2[:,1] < 0) | (coords2[:,1] > image_size_x)
+    in_image = np.invert((coords2[:,0] < 0) | (coords2[:,0] > image_size_x) | (coords2[:,1] < 0) | (coords2[:,1] > image_size_y))
     I1_masked = I1[in_image, :]
-    print(in_image.shape)
     coords2_masked = coords2[in_image, :]
-    I2 = I2[coords2_masked[:,1]*image_size_x+coords2_masked[:,0], :]
-    print(I2.shape)
-    print(I1.shape)
+    I2 = I2[coords2_masked[:,1]*image_size_y+coords2_masked[:,0], :]
 
-    return np.sum(I1_masked-I2)
+    return np.linalg.norm(I1_masked-I2)
 
 
-def get_geometric_error(coord, static_flow, img1, img2):
-    pass
+def get_geometric_error(static_flow, img1, img2, l_geo = 5):
+
+    geometric_mask = 0
+
+    return geometric_mask
+    
     # get pixel correspondences using flow
     # check if still in image 2
     # project pixels in both images to 3D
@@ -83,13 +87,56 @@ def get_geometric_error(coord, static_flow, img1, img2):
     # define some threshold lambda_geo
     # return sum
 
-def unsupervised_loss(scores):
+def get_opt_flow_mask(static_flow, dynamic_flow, l_C = 10):
+    """
+    static_flow.shape: (512, 1382, 2)
+    """
+
+    combo_mask = np.linalg.norm(np.sum((dynamic_flow, -static_flow), axis=0), axis=2)
+
+    opt_flow_mask = combo_mask < l_C
+
+    return opt_flow_mask
+
+def consensus_loss(ms_scores, img1, img2, static_flow, dynamic_flow):
+    """
+    static_pm - static flow photometric error mask
+    dynamic_pm - dynamic flow photometric error mask
+    """
+
+    static_pe_mask = get_photometric_error(static_flow, img1, img2)
+
+    #TODO: FLow correct for dynamic? t to t+1 drawn in frame t
+    dynamic_pe_mask = get_photometric_error(dynamic_flow, img1, img2)
+    pe_mask = static_pe_mask < dynamic_pe_mask
+
+    opt_flow_mask = get_opt_flow_mask(static_flow, dynamic_flow)
+
+    geometric_mask = get_geometric_error(static_flow, img1, img2)
+
+    total_mask = pe_mask | opt_flow_mask | geometric_mask
+
+    consensus_loss = nn.functional.binary_cross_entropy(total_mask, ms_scores)
+
+    return consensus_loss
+
+
+def unsupervised_loss(scores, data, l_M = 1, l_E = 1, l_S = 1):
     # E = lambda_M * E_M + lambda_C * E_C + lambda_S * E_S
+
+    dynamic_flow = data[1] #512x1382x2
+    static_flow = data[2] #512x1382x2
+    img1 = data[0][:3,:,:].permute(1,2,0) #3x512x1382 -> 512x1382x3
+    img2 = data[0][3:,:,:].permute(1,2,0)
+
     ones = torch.ones(1).expand_as(scores).type_as(scores)
     E_M = nn.functional.binary_cross_entropy(scores, ones)
 
-    
-    return
+    E_C = consensus_loss(scores, img1, img2, static_flow, dynamic_flow)
+
+    total_loss = l_M*E_M + l_M*E_C #+ l_S*E_S
+
+    return total_loss
 
 def run_val(val_loader, model, epoch, train_size):
     model.eval()
@@ -171,7 +218,8 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, p
 
             # forward
             scores = model(data)
-            loss = sigmoid_focal_loss(scores, targets, alpha=alpha, gamma=gamma, reduction="sum")
+            # loss = sigmoid_focal_loss(scores, targets, alpha=alpha, gamma=gamma, reduction="sum")
+            loss = unsupervised_loss(scores, data)
             # loss = criterion(scores, targets)
 
             # backward
