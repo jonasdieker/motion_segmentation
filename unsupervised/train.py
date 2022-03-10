@@ -71,7 +71,7 @@ def get_photometric_error(flow, img1, img2):
     coords2_masked = coords2[in_image, :]
     I2 = I2[coords2_masked[:,1]*image_size_y+coords2_masked[:,0], :]
 
-    return np.linalg.norm(I1_masked-I2)
+    return np.linalg.norm(I1_masked-I2, axis = 1)
 
 
 def get_geometric_error(static_flow, img1, img2, l_geo = 5):
@@ -91,9 +91,7 @@ def get_opt_flow_mask(static_flow, dynamic_flow, l_C = 10):
     """
     static_flow.shape: (512, 1382, 2)
     """
-
     combo_mask = np.linalg.norm(np.sum((dynamic_flow, -static_flow), axis=0), axis=2)
-
     opt_flow_mask = combo_mask < l_C
 
     return opt_flow_mask

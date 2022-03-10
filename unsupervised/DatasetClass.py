@@ -36,7 +36,7 @@ class CarlaUnsupervised(Dataset):
         mask_seqs = (sorted(list(glob.glob(os.path.join(self.data_root, "motion_segmentation/**/")))))
         static_flow_seqs = (sorted(list(glob.glob(os.path.join(self.data_root, "static_flow/**/")))))
         dynamic_flow_seqs = (sorted(list(glob.glob(os.path.join(self.data_root, "opt_flow/**/")))))
-        depth_seqs = (sorted(list(glob.glob(os.path.join(self.data_root, "opt_flow/**/")))))
+        depth_seqs = (sorted(list(glob.glob(os.path.join(self.data_root, "depth/**/")))))
 
         self.sequence_number = len(image_seqs)
 
@@ -70,10 +70,10 @@ class CarlaUnsupervised(Dataset):
         label_0 = torch.from_numpy(np.array(Image.open(self.mask_paths[idx]), np.float32))
         label_0 = label_0[None, :, :]
 
-        depth_0 = torch.from_numpy(np.array(Image.open(self.depth_paths[idx]), np.float32))
-        depth_1 = torch.from_numpy(np.array(Image.open(self.get_pair_image(self.depth_paths[idx])), np.float32))
+        depth_0 = torch.from_numpy(np.array(Image.open(self.depth_paths[idx]), np.float32)).unsqueeze(dim=0)
+        depth_1 = torch.from_numpy(np.array(Image.open(self.get_pair_image(self.depth_paths[idx])), np.float32)).unsqueeze(dim=0)
 
-        depth_concat = torch.vstack([depth_0.permute((2,0,1)), depth_1.permute((2,0,1))])
+        depth_concat = torch.vstack([depth_0,depth_1])
         
         if self.transform:
             img_0_tensor = self.transform(image_0)
