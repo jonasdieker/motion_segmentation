@@ -77,7 +77,7 @@ def run_val(val_loader, model, epoch, train_size):
     model.train()
     return (val_loss, aIoU)
 
-def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, prev_model, logger):
+def train(lr, batch_size, epochs, patience, loss_type, lr_scheduler_factor, alpha, gamma, prev_model, logger):
 
     # init model and pass to `device`
     input_channels=6
@@ -123,8 +123,10 @@ def train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, p
 
             # forward
             scores = model(data)
-            loss = sigmoid_focal_loss(scores, targets, alpha=alpha, gamma=gamma, reduction="sum")
-            # loss = criterion(scores, targets)
+            if loss_type == 'focal':
+                loss = sigmoid_focal_loss(scores, targets, alpha=alpha, gamma=gamma, reduction="sum")
+            else:
+                loss = criterion(scores, targets)
 
             # backward
             optimizer.zero_grad()
@@ -181,6 +183,7 @@ def parse():
     parser.add_argument("--lr", default=1.25e-5, type=float, help='Learning rate - default: 5e-3')
     parser.add_argument("--batch_size", default=2, type=int, help='Default=2')
     parser.add_argument("--epochs", default=50, type=int, help='Default=50')
+    parser.add_argument("--loss_type", default='focal', type=str, help='Loss types available - focal, bce')
     parser.add_argument("--patience", default=6, type=float, help='Default=3')
     parser.add_argument("--lr_scheduler_factor", default=0.5, type=float, help="Learning rate multiplier - default: 3")
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
@@ -195,6 +198,7 @@ if __name__ == "__main__":
     lr = args.lr
     batch_size = args.batch_size
     epochs = args.epochs
+    loss_type = args.loss_type
     patience = args.patience
     lr_scheduler_factor = args.lr_scheduler_factor
     alpha = args.alpha
@@ -228,7 +232,7 @@ if __name__ == "__main__":
         logger.warning("Path specified incorrectly, training without a checkpoint model")
 
     # specify some hyperparams
-    logger.info(f"running with lr={lr}, batch_size={batch_size}, epochs={epochs}, patience={patience}, lr_scheduler_factor={lr_scheduler_factor} alpha={alpha}, gamma={gamma}")
+    logger.info(f"running with lr={lr}, batch_size={batch_size}, epochs={epochs}, loss_type = {loss_type}, patience={patience}, lr_scheduler_factor={lr_scheduler_factor} alpha={alpha}, gamma={gamma}")
     
     # set device and clean up
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -266,4 +270,4 @@ if __name__ == "__main__":
     val_loader = DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(dataset=test_set, batch_size=batch_size, shuffle=True)
 
-    train(lr, batch_size, epochs, patience, lr_scheduler_factor, alpha, gamma, prev_model, logger)
+    train(lr, batch_size, epochs, loss_type, patience, lr_scheduler_factor, alpha, gamma, prev_model, logger)
