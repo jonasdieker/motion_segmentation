@@ -19,7 +19,7 @@ def reproject(u, depth, image_size_x, image_size_y, K=None):
     get instrinsics
     multiply inverse K with the homogeneous points and scale depth
     '''
-    # unpacking
+    # unpacking (christmas presents)
     u_coords, v_coords = u[:,0], u[:,1]
 
     # get homogeneous coords
@@ -84,8 +84,10 @@ def project(p3d, image_size_x, image_size_y):
     pixel_coords = unnormalised_pixel_coords/(unnormalised_pixel_coords[:,2].reshape((-1,1)))
     return pixel_coords[:,:2]
 
-def get_flow(depth0, image_size_x, image_size_y, trs, K=None):
+def get_flow(depth1, trs, K=None):
     # 2d pixel coordinates
+    image_size_x = depth1.shape[1]
+    image_size_y = depth1.shape[0]
     pixel_length = image_size_x * image_size_y
     u_coords = repmat(np.r_[image_size_x-1:-1:-1],
                         image_size_y, 1).reshape(pixel_length)
@@ -96,32 +98,29 @@ def get_flow(depth0, image_size_x, image_size_y, trs, K=None):
     v_coords = np.flip(v_coords)
     u = np.array([u_coords, v_coords]).T # u horizontal (x), v vertical (-y)
 
-    pc0 = reproject(u, depth0, image_size_x, image_size_y, K)
-
-    # find transformation
-    trs = inverse_se3(trs)
+    pc1 = reproject(u, depth1, image_size_x, image_size_y, K)
 
     # (CX_T_1 @ 1_T_Sensor1)^-1 @ C2_trs_C1 @ (CX_T_1 @ 1_T_Sensor2)
     CX_T_Sensor = (roty(90) @ rotz(90))
-    CX_T_Sensor_inv = inverse_se3(roty(90) @ rotz(90))
+    CX_T_Sensor_inv = inverse_se3(CX_T_Sensor)
     trs = CX_T_Sensor_inv @ trs @ CX_T_Sensor
 
-    pc0_trs = transform_pointcloud(pc0, trs)
-    u_dash = project(pc0_trs, image_size_x, image_size_y)
+    pc1_trs = transform_pointcloud(pc1, trs)
+    u_dash = project(pc1_trs, image_size_x, image_size_y)
 
     flow = u_dash - u
     flow = flow.reshape(image_size_y, image_size_x, 2)
 
     return flow
 
-def vis_flow(opt_flow):
+def vis_flow(flow):
     # create HSV & make Value a constant
     hsv = np.zeros((512,1382,3))
     hsv[:,:,1] = 255
 
     # Encoding: convert the algorithm's output into Polar coordinate
-    opt_flow_reshaped = opt_flow.reshape((512,1382,-1))
-    mag, ang = cv2.cartToPolar(opt_flow_reshaped[...,0], opt_flow_reshaped[...,1])
+    flow_reshaped = flow.reshape((512,1382,-1))
+    mag, ang = cv2.cartToPolar(flow_reshaped[...,0], flow_reshaped[...,1])
     # Use Hue and Value to encode the Optical Flow
     hsv[:,:, 0] = ang * 180 / np.pi / 2
     hsv[:,:, 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
