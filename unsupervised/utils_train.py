@@ -4,7 +4,6 @@ import gc
 from datetime import datetime
 import time
 import logging
-
 import numpy as np
 from numpy.matlib import repmat
 
@@ -17,8 +16,7 @@ from torchvision.ops.focal_loss import sigmoid_focal_loss
 from torch.utils.data import DataLoader
 
 
-
-#LOGGING
+#-------------------------- LOGGING ---------------------------#
 
 def setup_logger(args, log_root, now_string):
     formatter = logging.Formatter('[%(levelname)s] %(message)s')
@@ -45,7 +43,7 @@ def refresh_logger(args, logger):
     logger.addHandler(fh)
     return logger
 
-#DATA LOADING
+#----------------------------- DATA LOADING ----------------------#
 
 def get_dataloaders(dataset, batch_size=2, dataset_fraction=1.0, shuffle=True):
     dataset_length = int(len(dataset) * dataset_fraction)
@@ -75,7 +73,7 @@ def load_model(model_path, device='cuda:0'):
         print("Model on CPU")
         return torch.load(model_path, map_location=lambda storage, loc: storage)
 
-# Validation
+#-------------------------------- VALIDATION -------------------------#
 
 def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor):
     SMOOTH = 1e-6
@@ -90,9 +88,7 @@ def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor):
         
     return aIoU
 
-
-#Losses
-
+#------------------------------------ LOSSES ----------------------------#
 
 def _get_pixel_coords(img1):
     # 2d pixel coordinates
@@ -108,7 +104,6 @@ def _get_pixel_coords(img1):
     v_coords = np.flip(v_coords).reshape(-1)
     coords1 = np.stack((u_coords, v_coords), axis=-1)
     return coords1
-
 
 def get_opt_flow_mask(static_flow, dynamic_flow, l_C = 10):
     """

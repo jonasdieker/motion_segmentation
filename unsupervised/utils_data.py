@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 from skimage import io
 import cv2
 
+#------------------------- TRANSFORMATIONS ---------------------------#
+
 def rotx(angle):
     return np.array([
         [1,0,0,0],
@@ -39,6 +41,8 @@ def inverse_se3(se3_mat):
 
     return build_se3(R_T, new_t)
 
+#---------------------------- CV SPECIFIC STUFF ------------------------#
+
 def read_depth(depth_file):
     depth = io.imread(depth_file)
     depth = depth[:, :, 0] * 1.0 + depth[:, :, 1] * 256.0 + depth[:, :, 2] * (256.0 * 256)
@@ -72,7 +76,6 @@ def reproject(u, depth, image_size_x, image_size_y, K=None):
     return p3d.T
 
 def transform_pointcloud(pc, trs):
-    # somehow ensure correct direction of trs
     pc = np.hstack([pc, np.ones((pc.shape[0],1))])
     pc_trs = trs@pc.T
     return pc_trs[:3,:].T
@@ -88,7 +91,6 @@ def project(p3d, image_size_x, image_size_y):
     return pixel_coords[:,:2]
 
 def get_flow(depth1, trs, K=None):
-    # 2d pixel coordinates
     image_size_x = depth1.shape[1]
     image_size_y = depth1.shape[0]
     pixel_length = image_size_x * image_size_y
@@ -116,7 +118,7 @@ def get_flow(depth1, trs, K=None):
 
     return flow
 
-#Visualizations
+# ------------------------- VISUALIZATIONS --------------------------------#
 
 def plot_pair(img1, img2, size = (15,5)):
     plt.figure(figsize=size)
@@ -150,8 +152,6 @@ def render_optical_flow_data(data):
     intensity = np.log1p((basis - 1) * intensity) / np.log1p(basis - 1)
     # for the angle they use 360° scale, see https://stackoverflow.com/a/57203497/14467327
     angle = (np.pi + angle) * 360 / (2 * np.pi)
-    # print(F"Ranges, angle: [{np.min(angle)}, {np.max(angle)}], "
-    #       F"intensity: [{np.min(intensity)}, {np.max(intensity)}]")
     intensity = intensity[:, :, np.newaxis]
     angle = angle[:, :, np.newaxis]
     hsv_img = np.concatenate((angle, np.ones_like(intensity), intensity), axis=2)
@@ -160,9 +160,7 @@ def render_optical_flow_data(data):
     plt.figure(figsize=(20,10))
     plt.imshow(img_out)
 
-def plot_sparse_vecs(flow, sparseness=30, cutoff=1):
-    #Visualization of flow vectors 
-    
+def plot_sparse_vecs(flow, sparseness=30, cutoff=1):    
     fig = plt.figure(figsize = (16,10))
     plt.xlim(0,flow.shape[1])
     plt.ylim(0,flow.shape[0])
