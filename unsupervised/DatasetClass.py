@@ -92,8 +92,7 @@ class CarlaUnsupervised(Dataset):
 
 
 def test_Carla(test = False):
-    # data_root = "/storage/remote/atcremers40/motion_seg/datasets/Opt_flow_pixel_preprocess/"
-    data_root = "/Carla_Data_Collection/Opt_flow_pixel_preprocess"
+    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Opt_flow_pixel_preprocess/"
 
     if test:
         dataset = CarlaUnsupervised(data_root, test)
