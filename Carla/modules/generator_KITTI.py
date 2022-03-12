@@ -1,6 +1,7 @@
 #This script is adapted from https://github.com/jedeschaud/kitti_carla_simulator
 #with changes made to save the Motion Segmentation ground truth based on 
 #Vehicle and pedestrian semantic tags
+#Added Instance segmentation, modified depth, added optical flow sensor
 
 #!/usr/bin/env python3
 
@@ -16,9 +17,7 @@ import sys
 #         sys.version_info.major,
 #         sys.version_info.minor,
 #         'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
-    
 #     sys.path.append(glob.glob('../../')[0])
-
 # except IndexError:
 #     pass
 
@@ -73,7 +72,7 @@ class Camera(Sensor):
             data = self.queue.get()
 
             ts = data.timestamp-Sensor.initial_ts
-            if ts - self.ts_tmp > 0.26 or (ts - self.ts_tmp) < 0: #check for 10Hz camera acquisition
+            if ts - self.ts_tmp > 0.26 or (ts - self.ts_tmp) < 0: #check for 4Hz camera acquisition
                 print("[Error in timestamp] Camera: previous_ts %f -> ts %f" %(self.ts_tmp, ts))
                 sys.exit()
             self.ts_tmp = ts
@@ -148,10 +147,27 @@ class Depth(Camera):
         camera_ss_bp.set_attribute('sensor_tick', '0.25') # 4Hz camera
         return camera_ss_bp
 
-    def save(self, color_converter=carla.ColorConverter.LogarithmicDepth):
-#     def save(self):
-       Camera.save(self, color_converter)
-        # Camera.save(self)
+    def save(self, color_converter = carla.ColorConverter.Raw):
+        while not self.queue.empty():
+            data = self.queue.get()
+            #y = np.frombuffer(data.raw_data, dtype=np.dtype("uint8"))
+            #y = np.reshape(y, (data.height, data.width, 4))
+            #bgr = y[:,:,:3]
+
+            # B = bgr[:,:,0]
+            # G = bgr[:,:,1]
+            # R = bgr[:,:,2]
+            # normalized = (R + G * 256 + B * 256 * 256) / (256 * 256 * 256 - 1)
+            # in_meters = 1000 * normalized
+
+            file_path = self.frame_output+"/%04d.png" %(self.sensor_frame_id)
+            x = threading.Thread(target=data.save_to_disk, args=(file_path, color_converter))
+            x.start()
+            print("Export : "+file_path)
+
+            self.sensor_frame_id += 1
+
+            
 
 
 class IS(Camera):
@@ -184,13 +200,11 @@ class IS(Camera):
 
             data.convert(color_converter)
             y = np.frombuffer(data.raw_data, dtype=np.dtype("uint8"))
-            y = np.reshape(y, (data.height, data.width, 4))
-            bgr = y[:,:,:3]
+            y = np.reshape(y, (data.height, data.width, 4)) #BGRA image
+            bgr = y[:,:,:3] 
             bg = bgr[:,:,:2]
 
             z = np.zeros_like(y[:,:,0])
-
-            #Extend list to include pedestrians, still check for moving/non-moving
 
             for player_id in moving_list:
                 
@@ -225,7 +239,6 @@ class OptFlow(Camera):
     sensor_id_glob = 10
     def __init__(self, vehicle, world, actor_list, folder_output, transform):
         Camera.__init__(self, vehicle, world, actor_list, folder_output, transform)
-        # self.opt_flow = []
 
     def set_attributes(self, blueprint_library):
         camera_ss_bp = blueprint_library.find('sensor.camera.optical_flow')
@@ -259,10 +272,15 @@ class OptFlow(Camera):
             x = np.frombuffer(data.raw_data, dtype=np.dtype("float32"))
             opt_flow_raw = np.reshape(x, (data.height, data.width, 2)) #height, width, (v_x, v_y)
             opt_flow = opt_flow_raw.copy()
-            opt_flow[:, :, 0] = opt_flow[:, :, 0]*(data.height * -0.5) #scaling from [-2,2] CARLA encoding
-            opt_flow[:, :, 1] = opt_flow[:, :, 1]*(data.width * 0.5)
+            opt_flow[:, :, 0] = opt_flow[:, :, 0]*(data.width * -0.5) #scaling from [-2,2] CARLA encoding -> [-1,1]
+            opt_flow[:, :, 1] = opt_flow[:, :, 1]*(data.height * 0.5)
 
-            # self.opt_flow.append(opt_flow)
+            #Optical flow v_x and v_y alternative 
+            # flow_data = np.array([(pixel.x, pixel.y) for pixel in data], dtype=np.float32)
+            # opt_flow = flow_data.reshape((data.height, data.width, 2))
+            # opt_flow[:, :, 0] *= data.width * -0.5
+            # opt_flow[:, :, 1] *= data.height * 0.5
+
             self.opt_flow = opt_flow
             self.write_opt_flow(opt_flow_path, self.sensor_frame_id)
 
@@ -273,15 +291,12 @@ class OptFlow(Camera):
             # plt.xlim(0,1382)  
             # plt.ylim(0,512)    
             # plt.gca().invert_yaxis()
-
             # disc_step = 30 
             # offset = 10
-        
             # for i in range(offset, opt_flow.shape[0]-offset, disc_step):
             #     for j in range(offset,opt_flow.shape[1]-offset, disc_step):
             #         plt.arrow(j,i,opt_flow[i,j,0], opt_flow[i,j,1], head_width= 3)
             # fig.show()
-
             # flow_path = self.frame_output+"/%04d_flow.png" %(self.sensor_frame_id)
             # plt.savefig(flow_path)
 
@@ -317,8 +332,6 @@ class Poses():
         current_sensor2world_trs = translation_carla(data.transform.location) #Sensor location in world frame
         current_sensor2world_rot = rotation_carla(data.transform.rotation) #Sensor rotation in world frame
         current_sensor2world_transform = self.build_se3(current_sensor2world_rot, current_sensor2world_trs)
-
-        # world_T_sensor(i).T * world_T_sensor(i+1) -> sensor(i+1)_2_sensor(i)
         frame2frame_transform = self.inverse_se3(self.previous_sensor2world_transform).dot(current_sensor2world_transform)
 
         self.previous_sensor2world_transform = current_sensor2world_transform

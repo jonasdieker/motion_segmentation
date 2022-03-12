@@ -50,7 +50,6 @@ def main():
 
     sequences=50
     spawn_pts_len = 265 #for Town03
-    #Check spawn points present in folder structure, increment until existing
     spawn_points = np.random.choice(spawn_pts_len,sequences, replace=False)
 
     now = datetime.now()
@@ -76,7 +75,6 @@ def main():
             i_sequence += sequence_offset
             client.set_timeout(100.0)
             print(f"Starting sequence {i_sequence}")
-            # world = client.load_world("Town02_Opt")
             world = client.load_world("Town03_Opt")
             world.unload_map_layer(carla.MapLayer.ParkedVehicles)
 
@@ -97,11 +95,9 @@ def main():
             folder_transforms = os.path.join(root, "transformations", str('%04d' %(i_sequence)))
             os.makedirs(folder_transforms) if not os.path.exists(folder_transforms) else print("Transform dir already exists")
 
-            # os.makedirs(folder_output) if not os.path.exists(folder_output) else [os.remove(f) for f in glob.glob(folder_output+"/*") if os.path.isfile(f)]
             client.start_recorder(os.path.join(root,"recording.log"))
             
-            # Weather
-            # world.set_weather(carla.WeatherParameters.WetCloudyNoon)
+            # Set weather randomly
             weather_list = [1,2,4,5,9,10,12,14,15,17,18,20,21]
             weather_index = np.random.choice(len(weather_list))
             world.set_weather(getattr(carla.WeatherParameters, dir(carla.WeatherParameters)[weather_list[weather_index]]))
@@ -147,7 +143,6 @@ def main():
             gen.RGB.sensor_id_glob = 0
             gen.SS.sensor_id_glob = 10
             cam0 = gen.RGB(KITTI, world, actor_list, folder_rgb_seq, cam0_transform)
-            # poses = gen.Poses(cam0)
             cam0_ss = gen.SS(KITTI, world, actor_list, folder_ss_seq, cam0_transform)
             cam0_depth = gen.Depth(KITTI, world, actor_list, folder_depth_seq, cam0_transform)
             cam0_is = gen.IS(KITTI, world, actor_list, folder_ms_seq, cam0_transform)
