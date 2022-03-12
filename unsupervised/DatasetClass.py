@@ -3,13 +3,12 @@ Data Loader for Unsupervised Network using CARLA gt
 """
 import glob
 import os
-
 import numpy as np
 import torch
-import torchvision.transforms as transforms
+# import torchvision.transforms as transforms
 from PIL import Image
 from torch.utils.data import Dataset
-
+from utils_data import read_depth
 
 class CarlaUnsupervised(Dataset):
     """
@@ -46,10 +45,7 @@ class CarlaUnsupervised(Dataset):
             self.mask_paths.extend(sorted(list(glob.glob(os.path.join(mask_seqs[seq], "*.png"))))[10:-1])
             self.static_flow.extend(sorted(list(glob.glob(os.path.join(static_flow_seqs[seq], "*.pkl"))))[10:-1])
             self.dynamic_flow.extend(sorted(list(glob.glob(os.path.join(dynamic_flow_seqs[seq], "*.pkl"))))[10:-1])
-            # self.static_flow.extend(np.load(os.path.join(static_flow_seqs[seq], "static_flow.pkl"))[10:-1])
-            # self.dynamic_flow.extend(np.load(os.path.join(dynamic_flow_seqs[seq], "opt_flow.pkl"))[10:-1])
             self.depth_paths.extend(sorted(list(glob.glob(os.path.join(depth_seqs[seq], "*.png"))))[10:-1])
-        #TODO: Ensure all files are loaded, otherwise print/log erros
 
     def __len__(self):
         image_path_len = len(self.image_paths)
@@ -70,10 +66,9 @@ class CarlaUnsupervised(Dataset):
         label_0 = torch.from_numpy(np.array(Image.open(self.mask_paths[idx]), np.float32))
         label_0 = label_0[None, :, :]
 
-        depth_0 = torch.from_numpy(np.array(Image.open(self.depth_paths[idx]), np.float32)).unsqueeze(dim=0)
-        depth_1 = torch.from_numpy(np.array(Image.open(self.get_pair_image(self.depth_paths[idx])), np.float32)).unsqueeze(dim=0)
-
-        depth_concat = torch.vstack([depth_0,depth_1])
+        depth_0 = torch.from_numpy(read_depth(self.depth_paths[idx])).unsqueeze(dim=2)
+        depth_1 = torch.from_numpy(read_depth(self.get_pair_image(self.depth_paths[idx]))).unsqueeze(dim=2)
+        depth_concat = torch.vstack([depth_0.permute((2,0,1)),depth_1.permute((2,0,1))])
         
         if self.transform:
             img_0_tensor = self.transform(image_0)
@@ -85,8 +80,8 @@ class CarlaUnsupervised(Dataset):
             img_concat = torch.vstack([img_0_tensor.permute((2,0,1)), img_1_tensor.permute((2,0,1))])
 
 
-        static_flow = np.load(self.static_flow[idx])
-        dynamic_flow = np.load(self.dynamic_flow[idx])*-1
+        static_flow = torch.from_numpy(np.load(self.static_flow[idx])).permute((2,0,1))
+        dynamic_flow = torch.from_numpy(np.load(self.dynamic_flow[idx])).permute((2,0,1))*-1
 
         #Return rgb image, dynamic_opt_flow array, static_opt_flow_array, motion_mask 
         if self.test:
@@ -97,7 +92,9 @@ class CarlaUnsupervised(Dataset):
 
 
 def test_Carla(test = False):
-    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Carla_unsupervised/"
+    # data_root = "/storage/remote/atcremers40/motion_seg/datasets/Opt_flow_pixel_preprocess/"
+    data_root = "/Carla_Data_Collection/Opt_flow_pixel_preprocess"
+
     if test:
         dataset = CarlaUnsupervised(data_root, test)
     else:
