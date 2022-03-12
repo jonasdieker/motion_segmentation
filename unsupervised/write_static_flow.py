@@ -7,31 +7,6 @@ from skimage import io
 import cv2
 import os
 
-def get_intrinsics(fov, image_size_x, image_size_y):
-    f = image_size_x/(2.0 * np.tan(fov * np.pi /360))
-    Cx = image_size_x / 2.0
-    Cy = image_size_y / 2.0
-    return np.array([[f, 0, Cx], [0, f, Cy], [0, 0, 1]])
-
-def reproject(u, depth, image_size_x, image_size_y, K=None):
-    '''
-    get [u,v] pixel coordinates and convert to homogeneous
-    get instrinsics
-    multiply inverse K with the homogeneous points and scale depth
-    '''
-    # unpacking (christmas presents)
-    u_coords, v_coords = u[:,0], u[:,1]
-
-    # get homogeneous coords
-    p = np.array([u_coords, v_coords, np.ones_like(u_coords)])
-
-    # get K
-    if K is None:
-        K = get_intrinsics(72/(2*np.pi), image_size_x, image_size_y)
-
-    # get 3D points
-    p3d = np.dot(np.linalg.inv(K), p) * depth.reshape((-1)) * 1000
-    return p3d.T
 
 def rotx(angle):
     return np.array([
@@ -67,6 +42,38 @@ def inverse_se3(se3_mat):
     new_t = -R_T.dot(se3_mat[:3,-1])
 
     return build_se3(R_T, new_t)
+
+def read_depth(depth_file):
+    depth = io.imread(depth_file)
+    depth = depth[:, :, 0] * 1.0 + depth[:, :, 1] * 256.0 + depth[:, :, 2] * (256.0 * 256)
+    depth = depth * (1/ (256 * 256 * 256 - 1))
+    return depth
+
+def get_intrinsics(fov, image_size_x, image_size_y):
+    f = image_size_x/(2.0 * np.tan(fov * np.pi /360))
+    Cx = image_size_x / 2.0
+    Cy = image_size_y / 2.0
+    return np.array([[f, 0, Cx], [0, f, Cy], [0, 0, 1]])
+
+def reproject(u, depth, image_size_x, image_size_y, K=None):
+    '''
+    get [u,v] pixel coordinates and convert to homogeneous
+    get instrinsics
+    multiply inverse K with the homogeneous points and scale depth
+    '''
+    # unpacking (christmas presents)
+    u_coords, v_coords = u[:,0], u[:,1]
+
+    # get homogeneous coords
+    p = np.array([u_coords, v_coords, np.ones_like(u_coords)])
+
+    # get K
+    if K is None:
+        K = get_intrinsics(72/(2*np.pi), image_size_x, image_size_y)
+
+    # get 3D points
+    p3d = np.dot(np.linalg.inv(K), p) * depth.reshape((-1)) * 1000
+    return p3d.T
 
 def transform_pointcloud(pc, trs):
     # somehow ensure correct direction of trs
@@ -129,11 +136,33 @@ def vis_flow(flow):
     plt.figure(figsize=(20,10))
     plt.imshow(bgr)
 
+def render_optical_flow_data(data):
+    intensity = np.linalg.norm(data, axis=2)
+    angle = np.arctan2(data[:, :, 0], data[:, :, 1])
+    max_intensity = 100
+    # N.B.: an intensity of exactly 1.0 makes the output black (perhaps showing the over-saturation), so keep it < 1
+    intensity = np.clip(intensity, 0, max_intensity - 1) / max_intensity
+    # log scaling
+    basis = 30
+    intensity = np.log1p((basis - 1) * intensity) / np.log1p(basis - 1)
+    # for the angle they use 360° scale, see https://stackoverflow.com/a/57203497/14467327
+    angle = (np.pi + angle) * 360 / (2 * np.pi)
+    # print(F"Ranges, angle: [{np.min(angle)}, {np.max(angle)}], "
+    #       F"intensity: [{np.min(intensity)}, {np.max(intensity)}]")
+    intensity = intensity[:, :, np.newaxis]
+    angle = angle[:, :, np.newaxis]
+    hsv_img = np.concatenate((angle, np.ones_like(intensity), intensity), axis=2)
+    img_out = np.array(cv2.cvtColor(np.array(hsv_img, dtype=np.float32), cv2.COLOR_HSV2RGB) * 256,
+                       dtype=np.dtype("uint8"))
+    plt.figure(figsize=(20,10))
+    plt.imshow(img_out)
+
+
 if __name__ == "__main__":
 
     print("writing static flow...")
 
-    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Carla_unsupervised/"
+    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Opt_flow_pixel_preprocess/"
     depth_root = os.path.join(data_root, "depth")
     trs_root = os.path.join(data_root, "transformations")
     static_flow_root = os.path.join(data_root, "static_flow")
@@ -159,9 +188,9 @@ if __name__ == "__main__":
 
         for frame_idx in range(len(depths)-1):
 
-            depth = plt.imread(depths[frame_idx])
+            depth = read_depth(depths[frame_idx])
             trs = np.array(trs_list[frame_idx+1])
-            flow = get_flow(depth, 1382, 512, trs)
+            flow = get_flow(depth, trs)
 
             static_flow_path = os.path.join(sequence_path, "%04d.pkl" %(frame_idx))
             with open(static_flow_path, "wb") as f:
