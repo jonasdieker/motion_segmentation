@@ -27,7 +27,7 @@ from utils_train import setup_logger, refresh_logger, get_dataloaders, iou_pytor
 
 def get_photometric_error(flow, coords2, img1, img2):
     pixel2 = img2[coords2[0], coords2[1]]
-    coords1 = coords2 + flow[coords2[0], coords2[1]]
+    coords1 = coords2 + flow[coords2[0], coords2[1]].clone().detach().cpu().numpy()
     if coords1[0] < img1.shape[0] and coords1[0] >= 0 and coords1[1] < img1.shape[1] and coords1[1] >=0:
         pixel1 = img1[coords1[0], coords1[1]]
     else:
@@ -65,8 +65,8 @@ def consensus_loss(ms_scores, img1, img2, depth1, depth2, static_flow, dynamic_f
     """
     consensus_loss = 0
 
-    for i in range(len(img1.shape[0])):
-        for j in range(len(im1.shape[1])):
+    for i in range(img1.shape[0]):
+        for j in range(img1.shape[1]):
             #Photometric error (static pe_r, dynamic pe_f)
             pe_r = get_photometric_error(static_flow, np.array([i,j]), img1, img2)
             pe_f = get_photometric_error(dynamic_flow, np.array([i,j]), img1, img2)
@@ -87,13 +87,13 @@ def unsupervised_loss(scores, data, l_M = 1, l_C = 1, l_S = 1):
     E_M = 0
     E_C = 0
 
-    for i in range(data.shape[0]):
-        img1 = data[i][0][:3,:,:].permute(1,2,0)
-        img2 = data[i][0][3:,:,:].permute(1,2,0)
-        dynamic_flow = data[i][1].permute(1,2,0)
-        static_flow = data[i][2].permute(1,2,0)
-        depth1 = data[i][3][0].permute(1,2,0)
-        depth2 = data[i][3][0].permute(1,2,0)
+    for i in range(data[0].shape[0]):
+        img1 = data[0][i][:3,:,:].permute(1,2,0)
+        img2 = data[0][i][3:,:,:].permute(1,2,0)
+        dynamic_flow = data[1][i].permute(1,2,0)
+        static_flow = data[2][i].permute(1,2,0)
+        depth1 = data[3][i][0].unsqueeze(dim=2)
+        depth2 = data[3][i][1].unsqueeze(dim=2)
 
         ones = torch.ones(1).expand_as(scores).type_as(scores)
         E_M += nn.functional.binary_cross_entropy(scores, ones, reduction='sum')
@@ -166,7 +166,7 @@ def train(args, prev_model, logger):
     print("train network ...")
     train_loss = []
     val_IoU = []
-    best_val = 1e8
+    best_val = 0
     best_val_epoch = 1
     total_time = 0.0
     for epoch in range(args.epochs):
@@ -176,7 +176,6 @@ def train(args, prev_model, logger):
         steps_per_epoch = len(train_loader)
 
         for batch_idx, (imgs, dynamic_flow, static_flow, depths, _) in enumerate(train_loader):
-
             # move data to gpu if available
             imgs = imgs.to(device).float()
             dynamic_flow = dynamic_flow.to(device).float()
@@ -184,8 +183,8 @@ def train(args, prev_model, logger):
             depths = depths.to(device).float()
 
             # forward
-            scores = model(data[:,0])
-            loss = unsupervised_loss(scores, data)
+            scores = model(imgs)
+            loss = unsupervised_loss(scores, (imgs, dynamic_flow, static_flow, depths))
 
             # backward
             optimizer.zero_grad()
@@ -209,7 +208,7 @@ def train(args, prev_model, logger):
         logger = refresh_logger(args, logger)
 
         # info logging to log
-        logger.info(f"Epoch [{epoch + 1}/{args.epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_aIoU[-1][0], 5)}, IoU: {round(val_aIoU[-1][1].item(), 5)}, ETA: {round(((total_time/(epoch+1))*(args.epochs-epoch-1))/60**2,2)} hrs")
+        logger.info(f"Epoch [{epoch + 1}/{args.epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_IoU[-1][0], 5)}, IoU: {round(val_IoU[-1][1].item(), 5)}, ETA: {round(((total_time/(epoch+1))*(args.epochs-epoch-1))/60**2,2)} hrs")
 
         # check if dir exists, if not create one
         models_root = f"/storage/remote/atcremers40/motion_seg/saved_models/"
@@ -221,15 +220,15 @@ def train(args, prev_model, logger):
             torch.save(model, save_path)
 
         #Saving the best IoU model
-        if val_IoU[-1][1] > best_val:
-            best_val = val_IoU[-1][1]
+        if val_IoU[-1][1].item() >= best_val:
+            best_val = val_IoU[-1][1].item()
             best_IoU_epoch = epoch+1
             save_path = os.path.join(models_root, f"{model_name_prefix}/best_IoU.pt")
             if os.path.exists(save_path):
                 os.remove(save_path)
             torch.save(model, save_path)
         if (epoch+1) % 10 == 0:
-            logger.info(f"Epoch [{epoch + 1}] Current best IoU at epoch {best_IoU_epoch}")
+            logger.info(f"Epoch {epoch + 1} Current best IoU at epoch {best_IoU_epoch}")
 
     writer.close()
     # save final model
@@ -256,7 +255,7 @@ def parse():
 if __name__ == "__main__":
     args = parse().parse_args()
     root_tb = "/storage/remote/atcremers40/motion_seg/runs/"
-    data_root = "/storage/remote/atcremers40/motion_seg/datasets/"
+    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Opt_flow_pixel_preprocess"
     log_root = "/storage/remote/atcremers40/motion_seg/logs"
 
     # setup time/date for logging/saving models
