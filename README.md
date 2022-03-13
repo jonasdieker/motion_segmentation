@@ -6,7 +6,7 @@ The final report of the project can be found [here](final_report.pdf)
 
 ## CARLA Dataset Generation ([Docs](/docs/carla.md))
 
-*insert example images here*
+![Collection](/docs/assets/CarlaSamples.jpg)
 
 ## Supervised Motion Segmentation ([Docs](docs/supervised.md))
 
