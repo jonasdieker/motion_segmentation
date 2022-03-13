@@ -85,10 +85,10 @@ class CarlaUnsupervised(Dataset):
 
         #Return rgb image, dynamic_opt_flow array, static_opt_flow_array, motion_mask 
         if self.test:
-            return (img_concat/255, dynamic_flow, static_flow, depth_concat, label_0/255)
+            return img_concat/255, dynamic_flow, static_flow, depth_concat, label_0/255
         ##Return rgb image, dynamic_opt_flow array, static_opt_flow_array
         else:
-            return (img_concat/255, dynamic_flow, static_flow, depth_concat)
+            return img_concat/255, dynamic_flow, static_flow, depth_concat
 
 
 def test_Carla(test = False):
