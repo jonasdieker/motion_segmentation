@@ -1,13 +1,27 @@
 # ws21_motionsegmentation
 
-The aim of the project lies in training a model that produces accurate binary segmentation of moving objects in autonomous driving scenario. 
+The aim of the project lies in training a model that produces accurate binary segmentation of moving objects in autonomous driving scenario.
 
-## Sample images from Carla
+The final report of the project can be found [here](final_report.pdf)
 
-RGB, Depth, Optical FLow, Semantic Segmentation and Motion segmentation images are shown below
+## CARLA Dataset Generation ([Docs](/docs/carla.md))
 
-![RGB](/docs/assets/0183_rgb.png)
-![Depth](/docs/assets/0183_depth.png)
-![Opt_flow](/docs/assets/0183_opt_flow.png)
-![Semseg](/docs/assets/0183_semseg.png)
-![Motionseg](/docs/assets/0183_motionseg.png)
+*insert example images here*
+
+## Supervised Motion Segmentation ([Docs](docs/supervised.md))
+
+| Dataset      | IoU        |
+| ------------ | ---------- |
+| KITTI        | 0.xxx      |
+| CARLA (own)  | 0.xxx      |
+
+*insert example images here*
+
+## Unsupervised Motion Segmentation ([Docs](docs/unsupervised.md))
+
+| Dataset      | IoU        |
+| ------------ | ---------- |
+| KITTI        | 0.xxx      |
+| CARLA (own)  | 0.xxx      |
+
+*insert example images here*
