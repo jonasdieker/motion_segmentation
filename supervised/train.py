@@ -54,8 +54,11 @@ def run_val(val_loader, model, epoch, train_size):
 
             # forward
             scores = model(data)
-            loss = sigmoid_focal_loss(scores, targets, alpha=alpha, gamma=gamma, reduction="sum")
-            # loss = criterion(scores, y)
+            if loss_type == 'focal':
+                loss = sigmoid_focal_loss(scores, targets, alpha=alpha, gamma=gamma, reduction="sum")
+            else:
+                loss = criterion(scores, targets)
+
             val_losses.append(loss.item())
             scores_rounded = torch.round(sigmoid(scores))
 
@@ -180,10 +183,10 @@ def train(lr, batch_size, epochs, patience, loss_type, lr_scheduler_factor, alph
 
 def parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", default=1e-5, type=float, help='Learning rate - default: 5e-3')
+    parser.add_argument("--lr", default=1.25e-5, type=float, help='Learning rate - default: 5e-3')
     parser.add_argument("--batch_size", default=2, type=int, help='Default=2')
     parser.add_argument("--epochs", default=50, type=int, help='Default=50')
-    parser.add_argument("--loss_type", default='bce', type=str, help='Loss types available - focal, bce')
+    parser.add_argument("--loss_type", default='focal', type=str, help='Loss types available - focal, bce')
     parser.add_argument("--patience", default=3, type=int, help='Default=3')
     parser.add_argument("--lr_scheduler_factor", default=0.5, type=float, help="Learning rate multiplier - default: 3")
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
