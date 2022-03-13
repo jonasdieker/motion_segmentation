@@ -81,7 +81,7 @@ class CarlaUnsupervised(Dataset):
 
 
         static_flow = torch.from_numpy(np.load(self.static_flow[idx])).permute((2,0,1))
-        dynamic_flow = torch.from_numpy(np.load(self.dynamic_flow[idx])).permute((2,0,1))*-1
+        dynamic_flow = torch.from_numpy(np.load(self.dynamic_flow[idx])).permute((2,0,1))
 
         #Return rgb image, dynamic_opt_flow array, static_opt_flow_array, motion_mask 
         if self.test:
@@ -92,18 +92,19 @@ class CarlaUnsupervised(Dataset):
 
 
 def test_Carla(test = False):
-    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Opt_flow_pixel_preprocess/"
-
+    # data_root = "/storage/remote/atcremers40/motion_seg/datasets/Opt_flow_pixel_preprocess/"
+    data_root = "/Carla_Data_Collection/Opt_flow_pixel_preprocess"
     if test:
         dataset = CarlaUnsupervised(data_root, test)
     else:
         dataset = CarlaUnsupervised(data_root)
     item = dataset.__getitem__(0)
-    print(f"len of dataset: {len(dataset)}\n \
-    shape of rgb: {item[0].shape}\n \
-    shape of dynamic flow: {item[1].shape}\n \
-    shape of static flow: {item[2].shape}\n \
-    shape of depth: {item[3].shape}\n ")
+    print(f"""
+    len of dataset: {len(dataset)}
+    shape of rgb: {item[0].shape}
+    shape of dynamic flow: {item[1].shape}
+    shape of static flow: {item[2].shape}
+    shape of depth: {item[3].shape}""")
     if test:
         print(f"shape of motion_segmentation: {item[4].shape}")
 
