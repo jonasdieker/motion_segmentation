@@ -71,14 +71,14 @@ def run_val(val_loader, model, epoch, train_size):
             val_iou.append(iou)
 
         val_loss = sum(val_losses)/len(val_losses)
-        aIoU = sum(val_iou)/len(val_iou)
+        IoU = sum(val_iou)/len(val_iou)
 
         writer.add_scalar("val loss", val_loss, epoch*train_size)
-        writer.add_scalar("aIoU", aIoU, epoch*train_size)
+        writer.add_scalar("IoU", IoU, epoch*train_size)
 
     # set back to train ensures layers like dropout, batchnorm are used after eval
     model.train()
-    return (val_loss, aIoU)
+    return (val_loss, IoU)
 
 def train(lr, batch_size, epochs, patience, loss_type, lr_scheduler_factor, alpha, gamma, prev_model, logger):
 
@@ -108,8 +108,8 @@ def train(lr, batch_size, epochs, patience, loss_type, lr_scheduler_factor, alph
     # train network
     print("train network ...")
     train_loss = []
-    val_aIoU = []
-    best_val = 1e8
+    val_IoU = []
+    best_val = 0
     best_val_epoch = 1
     total_time = 0.0
     for epoch in range(epochs):
@@ -145,15 +145,15 @@ def train(lr, batch_size, epochs, patience, loss_type, lr_scheduler_factor, alph
                 writer.add_scalar("lr change", optimizer.param_groups[0]['lr'], epoch*steps_per_epoch + batch_idx)
 
         train_loss.append(sum(losses)/len(losses))
-        val_aIoU.append(run_val(val_loader, model, epoch, train_size))
+        val_IoU.append(run_val(val_loader, model, epoch, train_size))
         end = time.time()
         total_time += (end-start)
-        scheduler.step(val_aIoU[epoch][0])
+        scheduler.step(val_IoU[epoch][0])
 
         logger = refresh_logger(logger)
 
         # info logging to log
-        logger.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_aIoU[-1][0], 5)}, aIoU: {round(val_aIoU[-1][1].item(), 5)}, ETA: {round(((total_time/(epoch+1))*(epochs-epoch-1))/60**2,2)} hrs")
+        logger.info(f"Epoch [{epoch + 1}/{epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_IoU[-1][0], 5)}, IoU: {round(val_IoU[-1][1].item(), 5)}, ETA: {round(((total_time/(epoch+1))*(epochs-epoch-1))/60**2,2)} hrs")
 
         # check if dir exists, if not create one
         models_root = f"/storage/remote/atcremers40/motion_seg/saved_models/"
@@ -164,16 +164,16 @@ def train(lr, batch_size, epochs, patience, loss_type, lr_scheduler_factor, alph
             save_path = os.path.join(models_root, f"{model_name_prefix}/{batch_size}_{lr}_{epoch+1}.pt")
             torch.save(model, save_path)
 
-        #Saving the best aIoU model
-        if val_aIoU[-1][1] < best_val:
-            best_aIoU = val_aIoU[-1][1]
-            best_aIoU_epoch = epoch+1
-            save_path = os.path.join(models_root, f"{model_name_prefix}/best_aIoU.pt")
+        #Saving the best IoU model
+        if val_IoU[-1][1].item() >= best_val:
+            best_val = val_IoU[-1][1].item()
+            best_IoU_epoch = epoch+1
+            save_path = os.path.join(models_root, f"{model_name_prefix}/best_IoU.pt")
             if os.path.exists(save_path):
                 os.remove(save_path)
             torch.save(model, save_path)
         if (epoch+1) % 10 == 0:
-            logger.info(f"Epoch [{epoch + 1}] Current best aIoU at epoch {best_aIoU_epoch}")
+            logger.info(f"Epoch {epoch + 1} Current best IoU at epoch {best_IoU_epoch}")
 
     writer.close()
     # save final model
