@@ -2,6 +2,7 @@ import numpy as np
 import glob
 import json
 import os
+from tqdm import tqdm
 
 from utils_data import get_flow, read_depth
 
@@ -18,7 +19,7 @@ if __name__ == "__main__":
     depth_sequences = sorted(list(glob.glob(os.path.join(depth_root, "**"))))
     trs_sequences = sorted(list(glob.glob(os.path.join(trs_root, "**"))))
     # iterate over sequences
-    for seq in range(len(depth_sequences)):
+    for seq in tqdm(range(len(depth_sequences))):
 
         depths = sorted(list(glob.glob(os.path.join(depth_sequences[seq], "*.png"))))
         transformations = os.path.join(trs_sequences[seq], "transforms.json")
@@ -34,10 +35,10 @@ if __name__ == "__main__":
         if not os.path.isdir(sequence_path):
             os.mkdir(sequence_path)
 
-        for frame_idx in range(len(depths)-1):
+        for frame_idx in range(1,len(depths)):
 
             depth = read_depth(depths[frame_idx])
-            trs = np.array(trs_list[frame_idx+1])
+            trs = np.array(trs_list[frame_idx])
             flow = get_flow(depth, trs)
 
             static_flow_path = os.path.join(sequence_path, "%04d.pkl" %(frame_idx))
