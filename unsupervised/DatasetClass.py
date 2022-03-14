@@ -63,8 +63,8 @@ class CarlaUnsupervised(Dataset):
         image_0 = np.array(Image.open(self.image_paths[idx]), np.float32)[:,:,:3]
         image_1 = np.array(Image.open(self.get_pair_image(self.image_paths[idx])), np.float32)[:,:,:3]
 
-        label_0 = torch.from_numpy(np.array(Image.open(self.mask_paths[idx]), np.float32))
-        label_0 = label_0[None, :, :]
+        label_1 = torch.from_numpy(np.array(Image.open(self.get_pair_image(self.mask_paths[idx])), np.float32))
+        label_1 = label_1.unsqueeze(dim=0)
 
         depth_0 = torch.from_numpy(read_depth(self.depth_paths[idx])).unsqueeze(dim=2)
         depth_1 = torch.from_numpy(read_depth(self.get_pair_image(self.depth_paths[idx]))).unsqueeze(dim=2)
@@ -85,7 +85,7 @@ class CarlaUnsupervised(Dataset):
 
         #Return rgb image, dynamic_opt_flow array, static_opt_flow_array, motion_mask 
         if self.test:
-            return img_concat/255, dynamic_flow, static_flow, depth_concat, label_0/255
+            return img_concat/255, dynamic_flow, static_flow, depth_concat, label_1/255
         ##Return rgb image, dynamic_opt_flow array, static_opt_flow_array
         else:
             return img_concat/255, dynamic_flow, static_flow, depth_concat

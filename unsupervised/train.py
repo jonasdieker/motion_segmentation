@@ -26,7 +26,7 @@ from utils_train import setup_logger, refresh_logger, get_dataloaders, iou_pytor
 
 
 def reproject(pixels, depth):
-    K = get_intrinsics(72/(2*np.pi), depth.shape[1], depth.shape[0], return_type='torch')
+    K = get_intrinsics(72/(2*np.pi), depth.shape[1], depth.shape[0], device, return_type='torch')
     pixel_homogeneous = torch.cat((pixels[:,:,0].unsqueeze(dim=2), pixels[:,:,1].unsqueeze(dim=2), torch.ones_like(pixels[:,:,1]).unsqueeze(dim=2)), dim=2)
     pixel_list = (pixel_homogeneous.reshape((-1,3))).type(torch.float64)
     p3d = torch.matmul(torch.inverse(K), pixel_list.T).T * depth.reshape((-1,1)) * 1000
@@ -80,7 +80,7 @@ def consensus_loss(ms_scores, img1, img2, depth1, depth2, static_flow, dynamic_f
 
     return consensus_loss
 
-def unsupervised_loss(scores, data, l_M = 1, l_C = 1, l_S = 1):
+def unsupervised_loss(scores, data, l_M = 0.005, l_C = 0.3, l_S = 1):
     E_C = 0
     sigmoid = nn.Sigmoid()
 
@@ -109,20 +109,23 @@ def run_val(val_loader, model, epoch, args):
     # needed for validation metrics
     sigmoid = nn.Sigmoid()
     with torch.no_grad():
-        for batch_idx, data in enumerate(val_loader):
-            data = data.to(device=device).float()
-            motion_seg = data[:,4]
+        for batch_idx, (imgs, dynamic_flow, static_flow, depths, motion_seg) in enumerate(val_loader):
+            imgs = imgs.to(device).float()
+            dynamic_flow = dynamic_flow.to(device).float()
+            static_flow = static_flow.to(device).float()
+            depths = depths.to(device).float()
+            motion_seg = motion_seg.to(device)
 
             # forward
-            scores = model(data[:,0])
-            loss = unsupervised_loss(scores, data)
+            scores = model(imgs)
+            loss = unsupervised_loss(scores, (imgs, dynamic_flow, static_flow, depths))
 
             val_losses.append(loss.item())
             scores_rounded = torch.round(sigmoid(scores))
 
             if batch_idx == 0:
                 writer.add_images("visualised_preds", scores_rounded, global_step=epoch+1)
-                writer.add_images("visualised_gts_rgb", data[:,0,3:6,:,:], global_step=epoch+1)
+                writer.add_images("visualised_gts_rgb", imgs[:,:3,:,:], global_step=epoch+1)
                 writer.add_images("visualised_gts", motion_seg, global_step=epoch+1)
 
             iou = iou_pytorch(scores_rounded.int(), motion_seg.int())
@@ -249,7 +252,7 @@ def parse():
     parser.add_argument("--l_C", default=1.0, type=float, help="hyper-param for consensus loss")
     parser.add_argument("--l_S", default=1.0, type=float, help="hyper-param for regularization")
     parser.add_argument("--load_chkpt", '-chkpt', default='0', type=str, help="Loading entire checkpoint path for inference/continue training")
-    parser.add_argument("--dataset_fraction", default=1.0, type=float, help="fraction of dataset to be used")
+    parser.add_argument("--dataset_fraction", default=0.05, type=float, help="fraction of dataset to be used")
     return parser
 
 if __name__ == "__main__":
@@ -284,8 +287,8 @@ if __name__ == "__main__":
     logger.info(f"running with lr={args.lr}, batch_size={args.batch_size}, epochs={args.epochs}, patience={args.patience}, lr_scheduler_factor={args.lr_scheduler_factor} alpha={args.alpha}, gamma={args.gamma}")
     
     # set device and clean up
-    # device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    device = torch.device('cpu')
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    # device = torch.device('cpu')
     gc.collect()
     torch.cuda.empty_cache()
     logger.info(f"running on '{device}'")
