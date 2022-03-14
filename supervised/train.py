@@ -48,8 +48,8 @@ def run_val(val_loader, model, epoch, args):
         val_loss = sum(val_losses)/len(val_losses)
         IoU = sum(val_iou)/len(val_iou)
 
-        writer.add_scalar("val loss", val_loss, epoch*args.train_size)
-        writer.add_scalar("IoU", IoU, epoch*args.train_size)
+        writer.add_scalar("val loss", val_loss, epoch*args.train_size/args.batch_size)
+        writer.add_scalar("IoU", IoU, epoch*args.train_size/args.batch_size)
 
     # set back to train ensures layers like dropout, batchnorm are used after eval
     model.train()
@@ -98,7 +98,7 @@ def train(args, prev_model, logger):
 
             # forward
             scores = model(data)
-            if args.oss_type == 'focal':
+            if args.loss_type == 'focal':
                 loss = sigmoid_focal_loss(scores, targets, alpha=args.alpha, gamma=args.gamma, reduction="sum")
             else:
                 loss = criterion(scores, targets)
@@ -117,18 +117,18 @@ def train(args, prev_model, logger):
                 writer.add_scalar("lr change", optimizer.param_groups[0]['lr'], epoch*steps_per_epoch + batch_idx)
 
         train_loss.append(sum(losses)/len(losses))
-        val_IoU.append(run_val(val_loader, model, epoch, args.train_size))
+        val_IoU.append(run_val(val_loader, model, epoch, args))
         end = time.time()
         total_time += (end-start)
         scheduler.step(val_IoU[epoch][0])
 
-        logger = refresh_logger(logger)
+        logger = refresh_logger(args, logger)
 
         # info logging to log
         logger.info(f"Epoch [{epoch + 1}/{args.epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_IoU[-1][0], 5)}, IoU: {round(val_IoU[-1][1].item(), 5)}, ETA: {round(((total_time/(epoch+1))*(args.epochs-epoch-1))/60**2,2)} hrs")
 
         # check if dir exists, if not create one
-        models_root = f"/storage/remote/atcremers40/motion_seg/saved_models/"
+        models_root = os.path.join(root, "saved_models/")
         if not os.path.isdir(os.path.join(models_root, model_name_prefix)):
             os.mkdir(os.path.join(models_root, model_name_prefix), mode=0o770)
         if (epoch+1) % 5 == 0:
@@ -156,7 +156,7 @@ def train(args, prev_model, logger):
 def parse():
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", default=1.25e-5, type=float, help='Learning rate - default: 5e-3')
-    parser.add_argument("--batch_size", default=2, type=int, help='Default=2')
+    parser.add_argument("--batch_size", default=1, type=int, help='Default=2')
     parser.add_argument("--epochs", default=50, type=int, help='Default=50')
     parser.add_argument("--loss_type", default='focal', type=str, help='Loss types available - focal, bce')
     parser.add_argument("--patience", default=3, type=int, help='Default=3')
@@ -164,17 +164,19 @@ def parse():
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
     parser.add_argument("--gamma", default=2.0, type=float, help='Focal loss gamma - default: 2')
     parser.add_argument("--load_chkpt", '-chkpt', default='0', type=str, help="Loading entire checkpoint path for inference/continue training")
-    parser.add_argument("--dataset_fraction", default=1.0, type=float, help="fraction of dataset to be used")
+    parser.add_argument("--dataset_fraction", default=0.1, type=float, help="fraction of dataset to be used")
     return parser
 
 if __name__ == "__main__":
     args = parse().parse_args()
 
-    root = "/storage/remote/atcremers40/motion_seg/"
+    # root = "/storage/remote/atcremers40/motion_seg/"
+    root = "/Carla_Data_Collection/supervised_net"
 
     # data_root = os.path.join(root, "datasets/KITTI_MOD_fixed/training/")
     # data_root = os.path.join(root, "datasets/Extended_MOD_Masks/")
-    data_root = os.path.join(root, "datasets/Carla_Annotation/Carla_Export/")
+    # data_root = os.path.join(root, "datasets/Carla_Annotation/Carla_Export/")
+    data_root = os.path.join(root, "datasets/Opt_flow_pixel_preprocess/")
     log_root = os.path.join(root, "logs/")
     root_tb = os.path.join(root, "runs/")
 
@@ -205,9 +207,9 @@ if __name__ == "__main__":
     # dataset = ExtendedKittiMod(data_root)
     dataset = CarlaMotionSeg(data_root)
 
-    train_loader, val_loader, test_loader = get_dataloaders(dataset, args.batch_size, args.dataset_fraction)
+    train_loader, val_loader, test_loader = get_dataloaders(dataset, args)
 
     # initialize tensorboard
-    writer = SummaryWriter(root_tb + now_string)
+    writer = SummaryWriter(os.path.join(root_tb, now_string))
 
     train(args, prev_model, logger)
