@@ -45,18 +45,19 @@ def refresh_logger(args, logger):
 
 #----------------------------- DATA LOADING ----------------------#
 
-def get_dataloaders(dataset, batch_size=2, dataset_fraction=1.0, shuffle=True):
-    dataset_length = int(len(dataset) * dataset_fraction)
+def get_dataloaders(dataset, args, shuffle=True):
+    dataset_length = int(len(dataset) * args.dataset_fraction)
     train_size = int(0.6 *  dataset_length)
+    args.train_size = train_size
     val_size = int(0.5*(dataset_length - train_size))
     test_size = dataset_length - train_size - val_size
     # taking subset of dataset according to dataset_fraction
     dataset_idx = list(range(0, dataset_length))
     dataset = torch.utils.data.Subset(dataset, dataset_idx)
     train_set, val_set, test_set = torch.utils.data.random_split(dataset, [train_size, val_size, test_size], generator = torch.Generator().manual_seed(0))
-    train_loader = DataLoader(dataset=train_set, batch_size=batch_size, shuffle=shuffle)
-    val_loader = DataLoader(dataset=val_set, batch_size=batch_size, shuffle=shuffle)
-    test_loader = DataLoader(dataset=test_set, batch_size=batch_size, shuffle=shuffle)
+    train_loader = DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=shuffle)
+    val_loader = DataLoader(dataset=val_set, batch_size=args.batch_size, shuffle=shuffle)
+    test_loader = DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=shuffle)
     return train_loader, val_loader, test_loader
 
 def load_model(model_path, device='cuda:0'):

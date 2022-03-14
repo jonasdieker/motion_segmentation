@@ -291,7 +291,7 @@ if __name__ == "__main__":
     ])
     dataset = CarlaUnsupervised(data_root, test=True) # test kwarg needed for plotting ground truth in tensorboard
 
-    train_loader, val_loader, test_loader = get_dataloaders(dataset, args.batch_size, args.dataset_fraction)
+    train_loader, val_loader, test_loader = get_dataloaders(dataset, args)
 
     # initialise tensorboard
     writer = SummaryWriter(root_tb + now_string)
