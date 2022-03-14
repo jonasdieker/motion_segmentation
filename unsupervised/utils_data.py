@@ -1,3 +1,4 @@
+import torch
 import numpy as np
 from numpy.matlib import repmat
 import matplotlib.pyplot as plt
@@ -49,11 +50,15 @@ def read_depth(depth_file):
     depth = depth * (1/ (256 * 256 * 256 - 1))
     return depth
 
-def get_intrinsics(fov, image_size_x, image_size_y):
+def get_intrinsics(fov, image_size_x, image_size_y, return_type='np'):
     f = image_size_x/(2.0 * np.tan(fov * np.pi /360))
     Cx = image_size_x / 2.0
     Cy = image_size_y / 2.0
-    return np.array([[f, 0, Cx], [0, f, Cy], [0, 0, 1]])
+
+    if return_type == 'np':
+        return np.array([[f, 0, Cx], [0, f, Cy], [0, 0, 1]])
+    elif return_type == 'torch':
+        return torch.tensor([[f, 0, Cx], [0, f, Cy], [0, 0, 1]])
 
 def reproject(u, depth, image_size_x, image_size_y, K=None):
     '''

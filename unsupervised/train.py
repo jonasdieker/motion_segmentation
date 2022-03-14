@@ -25,37 +25,36 @@ from utils_data import get_flow, reproject, get_intrinsics
 from utils_train import setup_logger, refresh_logger, get_dataloaders, iou_pytorch, _get_pixel_coords
 
 
-def get_photometric_error(flow, coords2, img1, img2):
-    pixel2 = img2[coords2[0], coords2[1]]
-    coords1 = coords2 + flow[coords2[0], coords2[1]].clone().detach().cpu().numpy()
-    if coords1[0] < img1.shape[0] and coords1[0] >= 0 and coords1[1] < img1.shape[1] and coords1[1] >=0:
-        pixel1 = img1[coords1[0], coords1[1]]
-    else:
-        pixel1 = pixel2 # value not known
+def reproject(pixels, depth):
+    K = get_intrinsics(72/(2*np.pi), depth.shape[1], depth.shape[0], return_type='torch')
+    pixel_homogeneous = torch.cat((pixels[:,:,0].unsqueeze(dim=2), pixels[:,:,1].unsqueeze(dim=2), torch.ones_like(pixels[:,:,1]).unsqueeze(dim=2)), dim=2)
+    pixel_list = (pixel_homogeneous.reshape((-1,3))).type(torch.float64)
+    p3d = torch.matmul(torch.inverse(K), pixel_list.T).T * depth.reshape((-1,1)) * 1000
+    p3d =(p3d).reshape((depth.shape[0], depth.shape[1], 3))
+    return p3d.type(torch.float32)
 
-    p_e = np.sum(np.linalg.norm(pixel2 - pixel1))
-    return p_e
+def get_photometric(flow, img1, img2, pixels2):
+    occlusion_mask = get_occlusion_mask(flow, img2, pixels2).unsqueeze(dim=2)
+    flow_masked = torch.mul(flow,occlusion_mask)
+    pixels1 = (torch.round(pixels2 + flow_masked)).type(torch.long)
+    pe = torch.norm(img2 - img1[pixels1[:,:,1], pixels1[:,:,0]], dim=2)
+    return pe
 
-def get_geometric_error(flow, depth1, depth2, coords2):
-    image_size_x = depth2.shape[1]
-    image_size_y = depth2.shape[0]
-    pixel2_3d = reproject_pixel(coords2, depth2[coords2[0], coords2[1]], image_size_x, image_size_y)
-    coords1 = coords2 + flow[coords2[0], coords2[1]]
-    if coords1[0] < img1.shape[0] and coords1[0] >= 0 and coords1[1] < img1.shape[1] and coords1[1] >=0:
-        pixel1_3d = reproject_pixel(coords1, depth1[coords1[0], coords1[1]], image_size_x, image_size_y)
-    else:
-        pixel1_3d = pixel2_3d
-
-    p_geo = np.sum(np.linalg.norm(pixel2_3d - pixel1_3d))
+def get_geometric(flow, depth1, depth2, pixels2):
+    occlusion_mask = get_occlusion_mask(flow, depth2, pixels2).unsqueeze(dim=2)
+    flow_masked = torch.mul(flow,occlusion_mask)
+    pixels1 = torch.round(pixels2 + flow_masked).type(torch.long)
+    pixels2_3d = reproject(pixels2, depth2)
+    pixels1_3d = reproject(pixels1, depth1[pixels1[:,:,1], pixels1[:,:,0]])
+    p_geo = torch.norm(pixels2_3d - pixels1_3d, dim=2)
     return p_geo
-    
-def reproject_pixel(pixel, depth, image_size_x, image_size_y):
-    K = get_intrinsics(72/(2*np.pi), image_size_x, image_size_y)
-    pixel_homogeneous = np.array([pixel[0], pixel[1], 1])
-    p3d = np.dot(np.linalg.inv(K), pixel_homogeneous) * depth * 1000
-    return p3d
 
-def consensus_loss(ms_scores, img1, img2, depth1, depth2, static_flow, dynamic_flow, l_C):
+def get_occlusion_mask(flow, img2, pixels2):
+    pixels1 = torch.round(pixels2 + flow)
+    occlusion_mask = torch.where((pixels1[:,:,0] < img2.shape[1]) * (pixels1[:,:,0] >= 0) * (pixels1[:,:,1] < img2.shape[0]) * (pixels1[:,:,1] >= 0), 1, 0)
+    return occlusion_mask
+
+def consensus_loss(ms_scores, img1, img2, depth1, depth2, static_flow, dynamic_flow, pixels, l_C):
     """
     ms_preds - motion segmentation prediction
     static_pm - static flow photometric error mask
@@ -65,27 +64,28 @@ def consensus_loss(ms_scores, img1, img2, depth1, depth2, static_flow, dynamic_f
     """
     consensus_loss = 0
 
-    for i in range(img1.shape[0]):
-        for j in range(img1.shape[1]):
-            #Photometric error (static pe_r, dynamic pe_f)
-            pe_r = get_photometric_error(static_flow, np.array([i,j]), img1, img2)
-            pe_f = get_photometric_error(dynamic_flow, np.array([i,j]), img1, img2)
+    #Photometric error (static pe_r, dynamic pe_f)
+    pe_r = get_photometric(static_flow, img1, img2, pixels.clone())
+    pe_f = get_photometric(dynamic_flow, img1, img2, pixels.clone())
 
-            #Optical flow 
-            flow_diff = np.sum(np.linalg.norm(static_flow[i,j] - dynamic_flow[i,j]))
+    #Optical flow 
+    flow_diff = torch.sum(torch.norm(static_flow - dynamic_flow))
 
-            #geometric error (static geo_r, dynamic geo_f)
-            geo_r = get_geometric_error(static_flow, depth1, depth2, np.array(i,j))
-            geo_f = get_geometric_error(dynamic_flow, depth1, depth2, np.array(i,j))
-        
-            label = (pe_r < pe_f) | (flow_diff > l_C) | (geo_r < geo_f)
-            consensus_loss += nn.functional.binary_cross_entropy(ms_scores, label)
+    #Geometric error (static geo_r, dynamic geo_f)
+    geo_r = get_geometric(static_flow, depth1, depth2, pixels.clone())
+    geo_f = get_geometric(dynamic_flow, depth1, depth2, pixels.clone())
+
+    label = torch.logical_or(torch.logical_or((pe_r < pe_f), (flow_diff < l_C)),(geo_r < geo_f)).unsqueeze(dim=0).type(torch.float)
+    consensus_loss = nn.functional.binary_cross_entropy(ms_scores, label)
 
     return consensus_loss
 
 def unsupervised_loss(scores, data, l_M = 1, l_C = 1, l_S = 1):
-    E_M = 0
     E_C = 0
+    sigmoid = nn.Sigmoid()
+
+    ones = torch.ones(1).expand_as(scores).type_as(scores)
+    E_M = nn.functional.binary_cross_entropy(sigmoid(scores), ones, reduction='sum')
 
     for i in range(data[0].shape[0]):
         img1 = data[0][i][:3,:,:].permute(1,2,0)
@@ -95,9 +95,9 @@ def unsupervised_loss(scores, data, l_M = 1, l_C = 1, l_S = 1):
         depth1 = data[3][i][0].unsqueeze(dim=2)
         depth2 = data[3][i][1].unsqueeze(dim=2)
 
-        ones = torch.ones(1).expand_as(scores).type_as(scores)
-        E_M += nn.functional.binary_cross_entropy(scores, ones, reduction='sum')
-        E_C += consensus_loss(scores, img1, img2, depth1, depth2, static_flow, dynamic_flow, l_C)
+        pixels = torch.from_numpy(_get_pixel_coords(img2).reshape((512,1382,2))).to(device=device)
+
+        E_C += consensus_loss(sigmoid(scores[i]), img1, img2, depth1, depth2, static_flow, dynamic_flow, pixels, l_C)
 
     total_loss = l_M*E_M + l_C*E_C #+ l_S*E_S
     return total_loss
@@ -211,7 +211,7 @@ def train(args, prev_model, logger):
         logger.info(f"Epoch [{epoch + 1}/{args.epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_IoU[-1][0], 5)}, IoU: {round(val_IoU[-1][1].item(), 5)}, ETA: {round(((total_time/(epoch+1))*(args.epochs-epoch-1))/60**2,2)} hrs")
 
         # check if dir exists, if not create one
-        models_root = f"/storage/remote/atcremers40/motion_seg/saved_models/"
+        models_root = os.path.join(root, "saved_models/")
         if not os.path.isdir(os.path.join(models_root, model_name_prefix)):
             os.mkdir(os.path.join(models_root, model_name_prefix), mode=0o770)
         if (epoch+1) % 5 == 0:
@@ -254,9 +254,14 @@ def parse():
 
 if __name__ == "__main__":
     args = parse().parse_args()
-    root_tb = "/storage/remote/atcremers40/motion_seg/runs/"
-    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Opt_flow_pixel_preprocess"
-    log_root = "/storage/remote/atcremers40/motion_seg/logs"
+
+    # root = "/storage/remote/atcremers40/motion_seg/"
+    root = "/Carla_Data_Collection/supervised_net"
+
+    # data_root = os.path.join(root, "datasets/Carla_Annotation/Carla_Export/")
+    data_root = os.path.join(root, "datasets/Opt_flow_pixel_preprocess/")
+    log_root = os.path.join(root, "logs/")
+    root_tb = os.path.join(root, "runs/")
 
     # setup time/date for logging/saving models
     now = datetime.now()
@@ -279,8 +284,8 @@ if __name__ == "__main__":
     logger.info(f"running with lr={args.lr}, batch_size={args.batch_size}, epochs={args.epochs}, patience={args.patience}, lr_scheduler_factor={args.lr_scheduler_factor} alpha={args.alpha}, gamma={args.gamma}")
     
     # set device and clean up
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    # device = torch.device('cpu')
+    # device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cpu')
     gc.collect()
     torch.cuda.empty_cache()
     logger.info(f"running on '{device}'")
@@ -291,7 +296,7 @@ if __name__ == "__main__":
     ])
     dataset = CarlaUnsupervised(data_root, test=True) # test kwarg needed for plotting ground truth in tensorboard
 
-    train_loader, val_loader, test_loader = get_dataloaders(dataset, args)
+    train_loader, val_loader, test_loader = get_dataloaders(dataset, args, shuffle=False)
 
     # initialise tensorboard
     writer = SummaryWriter(root_tb + now_string)
