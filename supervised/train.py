@@ -24,8 +24,8 @@ def run_val(val_loader, model, epoch, args):
     criterion = nn.BCEWithLogitsLoss()
     with torch.no_grad():
         for batch_idx, (data, targets) in enumerate(val_loader):
-            data = data.to(device=device).float()
-            targets = targets.to(device=device).float()
+            data = data.to(device=args.device).float()
+            targets = targets.to(device=args.device).float()
 
             # forward
             scores = model(data)
@@ -38,9 +38,9 @@ def run_val(val_loader, model, epoch, args):
             scores_rounded = torch.round(sigmoid(scores))
 
             if batch_idx == 0:
-                writer.add_images("visualised_preds", scores_rounded, global_step=epoch+1)
-                writer.add_images("visualised_gts_rgb", data[:,0:3,:,:], global_step=epoch+1)
-                writer.add_images("visualised_gts", targets, global_step=epoch+1)
+                args.writer.add_images("visualised_preds", scores_rounded, global_step=epoch+1)
+                args.writer.add_images("visualised_gts_rgb", data[:,0:3,:,:], global_step=epoch+1)
+                args.writer.add_images("visualised_gts", targets, global_step=epoch+1)
 
             iou = iou_pytorch(scores_rounded.int(), targets.int())
             val_iou.append(iou)
@@ -48,25 +48,24 @@ def run_val(val_loader, model, epoch, args):
         val_loss = sum(val_losses)/len(val_losses)
         IoU = sum(val_iou)/len(val_iou)
 
-        writer.add_scalar("val loss", val_loss, epoch*args.train_size/args.batch_size)
-        writer.add_scalar("IoU", IoU, epoch*args.train_size/args.batch_size)
+        args.writer.add_scalar("val loss", val_loss, epoch*args.train_size/args.batch_size)
+        args.writer.add_scalar("IoU", IoU, epoch*args.train_size/args.batch_size)
 
     # set back to train ensures layers like dropout, batchnorm are used after eval
     model.train()
     return (val_loss, IoU)
 
-def train(args, prev_model, logger):
+def train(args, train_loader, val_loader, prev_model, logger):
 
     sigmoid = nn.Sigmoid()
     # init model and pass to `device`
     input_channels=6
     output_channels=1
     if prev_model:
-        model = torch.load(prev_model).to(device)
+        model = torch.load(prev_model).to(args.device)
         model = model.float()
     else:
-        model = UNET(in_channels=input_channels, out_channels=output_channels).to(device)
-        # model = UNET_Mod(input_channels, output_channels).to(device)
+        model = UNET(in_channels=input_channels, out_channels=output_channels).to(args.device)
         model = model.float()
     logger.info(f"loaded model of type: {type(model)}")
 
@@ -76,7 +75,7 @@ def train(args, prev_model, logger):
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=args.lr_scheduler_factor, patience=args.patience, verbose=True)
 
     # for model saving
-    model_name_prefix = now.strftime(f"%d-%m-%Y_%H-%M_bs{args.batch_size}")
+    model_name_prefix = args.now.strftime(f"%d-%m-%Y_%H-%M_bs{args.batch_size}")
 
     # train network
     print("train network ...")
@@ -94,8 +93,8 @@ def train(args, prev_model, logger):
         for batch_idx, (data, targets) in enumerate(train_loader):
 
             # move data to gpu if available
-            data = data.to(device).float()
-            targets = targets.to(device).float()
+            data = data.to(args.device).float()
+            targets = targets.to(args.device).float()
 
             # forward
             scores = model(data)
@@ -114,11 +113,11 @@ def train(args, prev_model, logger):
             losses.append(loss.item()) 
 
             if batch_idx == 0:
-                writer.add_images("visualised_preds [training]", torch.round(sigmoid(scores)), global_step=epoch+1)
+                args.writer.add_images("visualised_preds [training]", torch.round(sigmoid(scores)), global_step=epoch+1)
 
             if (batch_idx) % 20 == 0:
-                writer.add_scalar("training loss", sum(losses)/len(losses), epoch*steps_per_epoch + batch_idx)
-                writer.add_scalar("lr change", optimizer.param_groups[0]['lr'], epoch*steps_per_epoch + batch_idx)
+                args.writer.add_scalar("training loss", sum(losses)/len(losses), epoch*steps_per_epoch + batch_idx)
+                args.writer.add_scalar("lr change", optimizer.param_groups[0]['lr'], epoch*steps_per_epoch + batch_idx)
 
         train_loss.append(sum(losses)/len(losses))
         val_IoU.append(run_val(val_loader, model, epoch, args))
@@ -132,7 +131,7 @@ def train(args, prev_model, logger):
         logger.info(f"Epoch [{epoch + 1}/{args.epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_IoU[-1][0], 5)}, IoU: {round(val_IoU[-1][1].item(), 5)}, ETA: {round(((total_time/(epoch+1))*(args.epochs-epoch-1))/60**2,2)} hrs")
 
         # check if dir exists, if not create one
-        models_root = os.path.join(root, "saved_models/")
+        models_root = os.path.join(args.root, "saved_models/")
         if not os.path.isdir(os.path.join(models_root, model_name_prefix)):
             os.mkdir(os.path.join(models_root, model_name_prefix), mode=0o770)
         if (epoch+1) % 5 == 0:
@@ -151,7 +150,7 @@ def train(args, prev_model, logger):
         if (epoch+1) % 10 == 0:
             logger.info(f"Epoch {epoch + 1} Current best IoU at epoch {best_IoU_epoch}")
 
-    writer.close()
+    args.writer.close()
     # save final model
     save_path = os.path.join(models_root, model_name_prefix, f"{args.batch_size}_{args.lr}_{args.epochs}.pt")
     torch.save(model, save_path)
@@ -160,15 +159,15 @@ def train(args, prev_model, logger):
 def parse():
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", default=1.25e-5, type=float, help='Learning rate - default: 5e-3')
-    parser.add_argument("--batch_size", default=1, type=int, help='Default=2')
-    parser.add_argument("--epochs", default=1000, type=int, help='Default=50')
+    parser.add_argument("--batch_size", default=2, type=int, help='Default=2')
+    parser.add_argument("--epochs", default=50, type=int, help='Default=50')
     parser.add_argument("--loss_type", default='focal', type=str, help='Loss types available - focal, bce')
     parser.add_argument("--patience", default=3, type=int, help='Default=3')
     parser.add_argument("--lr_scheduler_factor", default=0.5, type=float, help="Learning rate multiplier - default: 3")
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
     parser.add_argument("--gamma", default=2.0, type=float, help='Focal loss gamma - default: 2')
     parser.add_argument("--load_chkpt", '-chkpt', default='0', type=str, help="Loading entire checkpoint path for inference/continue training")
-    parser.add_argument("--dataset_fraction", default=0.1, type=float, help="fraction of dataset to be used")
+    parser.add_argument("--dataset_fraction", default=0.02, type=float, help="fraction of dataset to be used")
     return parser
 
 if __name__ == "__main__":
@@ -184,8 +183,8 @@ if __name__ == "__main__":
     log_root = os.path.join(root, "logs/")
     root_tb = os.path.join(root, "runs/")
 
-    now = datetime.now()
-    now_string = now.strftime(f"%d-%m-%Y_%H-%M_{args.batch_size}_{args.lr}_{args.epochs}")
+    args.now = datetime.now()
+    now_string = args.now.strftime(f"%d-%m-%Y_%H-%M_{args.batch_size}_{args.lr}_{args.epochs}")
     # setup logging
     args, logger = setup_logger(args, log_root, now_string)
 
@@ -203,10 +202,10 @@ if __name__ == "__main__":
     
     # set device and clean up
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    # device = torch.device('cpu')
+    args.device = device
     gc.collect()
     torch.cuda.empty_cache()
-    logger.info(f"running on '{device}'")
+    logger.info(f"running on '{args.device}'")
 
     # dataset = ExtendedKittiMod(data_root)
     dataset = CarlaMotionSeg(data_root)
@@ -214,6 +213,6 @@ if __name__ == "__main__":
     train_loader, val_loader, test_loader = get_dataloaders(dataset, args)
 
     # initialize tensorboard
-    writer = SummaryWriter(os.path.join(root_tb, now_string))
+    args.writer = SummaryWriter(os.path.join(root_tb, now_string))
 
-    train(args, prev_model, logger)
+    train(args, train_loader, val_loader, prev_model, logger)
