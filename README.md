@@ -2,7 +2,7 @@
 
 The aim of the project lies in training a model that produces accurate binary segmentation of moving objects in autonomous driving scenario.
 
-The final report of the project can be found [here](final_report.pdf)
+The final report for the project can be found [here](final_report.pdf).
 
 ## CARLA Dataset Generation ([Docs](/docs/carla.md))
 
@@ -13,7 +13,7 @@ The final report of the project can be found [here](final_report.pdf)
 ## Supervised Motion Segmentation ([Docs](docs/supervised.md))
 
 | Dataset      | IoU        | Aggregated IoU    | mIoU |
-| ------------ | ---------- | ----------------- | ---- |
+|:------------:|:----------:|:-----------------:|:----:|
 | KITTI        | 0.749      | 0.730             | 0.871|
 | CARLA        | 0.722      | 0.744             | 0.856|
 
@@ -25,7 +25,7 @@ The final report of the project can be found [here](final_report.pdf)
 ## Unsupervised Motion Segmentation ([Docs](docs/unsupervised.md))
 
 | Dataset      | IoU        |
-| ------------ | ---------- |
+|:------------:|:----------:|
 | KITTI        | 0.xxx      |
 | CARLA (own)  | 0.xxx      |
 
