@@ -75,7 +75,7 @@ def consensus_loss(ms_scores, img1, img2, depth1, depth2, static_flow, dynamic_f
     geo_r = get_geometric(static_flow, depth1, depth2, pixels.clone())
     geo_f = get_geometric(dynamic_flow, depth1, depth2, pixels.clone())
 
-    label = torch.logical_or(torch.logical_or((pe_r < pe_f), (flow_diff < l_C)),(geo_r < geo_f)).unsqueeze(dim=0).type(torch.float)
+    label = torch.logical_or(torch.logical_or((pe_r > pe_f), (flow_diff > l_C)),(geo_r > geo_f)).unsqueeze(dim=0).type(torch.float)
     consensus_loss = nn.functional.binary_cross_entropy(ms_scores, label)
 
     return consensus_loss
@@ -124,8 +124,8 @@ def run_val(val_loader, model, epoch, args):
             scores_rounded = torch.round(sigmoid(scores))
 
             if batch_idx == 0:
-                writer.add_images("visualised_preds", scores_rounded, global_step=epoch+1)
-                writer.add_images("visualised_gts_rgb", imgs[:,:3,:,:], global_step=epoch+1)
+                writer.add_images("visualised_preds", scores_rounded.int(), global_step=epoch+1)
+                writer.add_images("visualised_gts_rgb", imgs[:,3:,:,:], global_step=epoch+1)
                 writer.add_images("visualised_gts", motion_seg, global_step=epoch+1)
 
             iou = iou_pytorch(scores_rounded.int(), motion_seg.int())
@@ -252,16 +252,15 @@ def parse():
     parser.add_argument("--l_C", default=1.0, type=float, help="hyper-param for consensus loss")
     parser.add_argument("--l_S", default=1.0, type=float, help="hyper-param for regularization")
     parser.add_argument("--load_chkpt", '-chkpt', default='0', type=str, help="Loading entire checkpoint path for inference/continue training")
-    parser.add_argument("--dataset_fraction", default=0.05, type=float, help="fraction of dataset to be used")
+    parser.add_argument("--dataset_fraction", default=0.02, type=float, help="fraction of dataset to be used")
     return parser
 
 if __name__ == "__main__":
     args = parse().parse_args()
 
-    # root = "/storage/remote/atcremers40/motion_seg/"
-    root = "/Carla_Data_Collection/supervised_net"
+    root = "/storage/remote/atcremers40/motion_seg/"
+    # root = "/Carla_Data_Collection/supervised_net"
 
-    # data_root = os.path.join(root, "datasets/Carla_Annotation/Carla_Export/")
     data_root = os.path.join(root, "datasets/Opt_flow_pixel_preprocess/")
     log_root = os.path.join(root, "logs/")
     root_tb = os.path.join(root, "runs/")
