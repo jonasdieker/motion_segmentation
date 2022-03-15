@@ -57,6 +57,7 @@ def run_val(val_loader, model, epoch, args):
 
 def train(args, prev_model, logger):
 
+    sigmoid = nn.Sigmoid()
     # init model and pass to `device`
     input_channels=6
     output_channels=1
@@ -112,6 +113,9 @@ def train(args, prev_model, logger):
 
             losses.append(loss.item()) 
 
+            if batch_idx == 0:
+                writer.add_images("visualised_preds [training]", torch.round(sigmoid(scores)), global_step=epoch+1)
+
             if (batch_idx) % 20 == 0:
                 writer.add_scalar("training loss", sum(losses)/len(losses), epoch*steps_per_epoch + batch_idx)
                 writer.add_scalar("lr change", optimizer.param_groups[0]['lr'], epoch*steps_per_epoch + batch_idx)
@@ -157,7 +161,7 @@ def parse():
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", default=1.25e-5, type=float, help='Learning rate - default: 5e-3')
     parser.add_argument("--batch_size", default=1, type=int, help='Default=2')
-    parser.add_argument("--epochs", default=50, type=int, help='Default=50')
+    parser.add_argument("--epochs", default=1000, type=int, help='Default=50')
     parser.add_argument("--loss_type", default='focal', type=str, help='Loss types available - focal, bce')
     parser.add_argument("--patience", default=3, type=int, help='Default=3')
     parser.add_argument("--lr_scheduler_factor", default=0.5, type=float, help="Learning rate multiplier - default: 3")
@@ -170,8 +174,8 @@ def parse():
 if __name__ == "__main__":
     args = parse().parse_args()
 
-    # root = "/storage/remote/atcremers40/motion_seg/"
-    root = "/Carla_Data_Collection/supervised_net"
+    root = "/storage/remote/atcremers40/motion_seg/"
+    # root = "/Carla_Data_Collection/supervised_net"
 
     # data_root = os.path.join(root, "datasets/KITTI_MOD_fixed/training/")
     # data_root = os.path.join(root, "datasets/Extended_MOD_Masks/")
