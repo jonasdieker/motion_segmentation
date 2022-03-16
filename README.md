@@ -4,11 +4,11 @@ The aim of the project lies in training a model that produces accurate binary se
 
 The final report for the project can be found [here](final_report.pdf).
 
-## CARLA Dataset Generation ([Docs](/docs/carla.md))
+## Generated CARLA Dataset ([Docs](/docs/carla.md))
+
+ - Explore our CARLA dataset in [Jupyter Notebook](/Carla/data_visualization.ipynb)
 
 ![Collection](/docs/assets/CarlaSamples.jpg)
-
- - Explore [CARLA dataset](/)
 
 ## Supervised Motion Segmentation ([Docs](docs/supervised.md))
 
@@ -19,8 +19,8 @@ The final report for the project can be found [here](final_report.pdf).
 
 *insert example images here*
 
- - Run training interactively in [Jupyter Notebook](/)
- - Run inference interactively in [Jupyter Notebook](/supervised/inference.ipynb)
+ - Run training in [Jupyter Notebook](/supervised/train.ipynb)
+ - Run inference in [Jupyter Notebook](/supervised/inference.ipynb)
 
 ## Unsupervised Motion Segmentation ([Docs](docs/unsupervised.md))
 
@@ -30,3 +30,5 @@ The final report for the project can be found [here](final_report.pdf).
 | CARLA (own)  | 0.xxx      |
 
 *insert example images here*
+
+- Run training in [Jupyter Notebook](/unsupervised/train.ipynb)
