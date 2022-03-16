@@ -8,9 +8,6 @@ The easiest way to get started is to use the provided yaml file [here](../superv
 
 ## Getting Started
 
-In our [notebook](../unsupervised/main.ipynb) one can run training and inference. Note: for training at least 9 GB of VRAM are required!
+In our [Jupyter Notebook](/unsupervised/train.ipynb) one can run training.
 
-``` python
-def test(arg1, arg2):
-    return np.array([1,2,3])
-```
+Note: for training at least 9 GB of VRAM are required!

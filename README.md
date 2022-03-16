@@ -17,18 +17,9 @@ The final report for the project can be found [here](final_report.pdf).
 | KITTI        | 0.749      | 0.730             | 0.871|
 | CARLA        | 0.722      | 0.744             | 0.856|
 
-*insert example images here*
-
  - Run training in [Jupyter Notebook](/supervised/train.ipynb)
  - Run inference in [Jupyter Notebook](/supervised/inference.ipynb)
 
 ## Unsupervised Motion Segmentation ([Docs](docs/unsupervised.md))
-
-| Dataset      | IoU        |
-|:------------:|:----------:|
-| KITTI        | 0.xxx      |
-| CARLA (own)  | 0.xxx      |
-
-*insert example images here*
 
 - Run training in [Jupyter Notebook](/unsupervised/train.ipynb)
