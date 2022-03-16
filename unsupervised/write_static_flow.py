@@ -11,7 +11,7 @@ if __name__ == "__main__":
 
     print("writing static flow...")
 
-    data_root = "/storage/remote/atcremers40/motion_seg/datasets/Opt_flow_pixel_preprocess/"
+    data_root = "/storage/remote/atcremers40/motion_seg/datasets/CARLA/"
     depth_root = os.path.join(data_root, "depth")
     trs_root = os.path.join(data_root, "transformations")
     static_flow_root = os.path.join(data_root, "static_flow")

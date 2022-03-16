@@ -74,7 +74,7 @@ def reproject(u, depth, image_size_x, image_size_y, K=None):
 
     # get K
     if K is None:
-        K = get_intrinsics(72/(2*np.pi), image_size_x, image_size_y)
+        K = get_intrinsics(72/(2*np.pi), image_size_x, image_size_y, device="cpu")
 
     # get 3D points
     p3d = np.dot(np.linalg.inv(K), p) * depth.reshape((-1)) * 1000
@@ -90,7 +90,7 @@ def project(p3d, image_size_x, image_size_y):
     gets intrinsics, projects points into the image plane
     and normalises the pixels
     '''   
-    K = get_intrinsics(72/(2*np.pi), image_size_x, image_size_y)
+    K = get_intrinsics(72/(2*np.pi), image_size_x, image_size_y, device="cpu")
     unnormalised_pixel_coords = np.dot(K, p3d.T).T
     pixel_coords = unnormalised_pixel_coords/(unnormalised_pixel_coords[:,2].reshape((-1,1)))
     return pixel_coords[:,:2]
