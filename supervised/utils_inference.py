@@ -97,8 +97,8 @@ def aggregated_IoU(outputs, labels):
    
 def inference_prep(dataset_type="carla", model_type="carla", dataset_fraction=1.0, device="cuda:0"):
     if dataset_type == "carla":
-        data_root = "/storage/remote/atcremers40/motion_seg/datasets/Carla_Annotation/Carla_Export/"
-        # data_root = "/storage/remote/atcremers40/motion_seg/datasets/Opt_flow_pixel_preprocess"
+        data_root = "/storage/remote/atcremers40/motion_seg/datasets/Carla_supervised/"
+        # data_root = "/storage/remote/atcremers40/motion_seg/datasets/other/Opt_flow_pixel_preprocess"
         dataset = CarlaMotionSeg(data_root)
     elif dataset_type == "kitti":
         data_root = "/storage/remote/atcremers40/motion_seg/datasets/Extended_MOD_Masks/"
