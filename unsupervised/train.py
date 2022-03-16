@@ -25,7 +25,7 @@ from utils_data import get_flow, reproject, get_intrinsics
 from utils_train import setup_logger, refresh_logger, get_dataloaders, iou_pytorch, _get_pixel_coords
 
 
-def reproject(pixels, depth):
+def reproject(pixels, depth, device):
     K = get_intrinsics(72/(2*np.pi), depth.shape[1], depth.shape[0], device, return_type='torch')
     pixel_homogeneous = torch.cat((pixels[:,:,0].unsqueeze(dim=2), pixels[:,:,1].unsqueeze(dim=2), torch.ones_like(pixels[:,:,1]).unsqueeze(dim=2)), dim=2)
     pixel_list = (pixel_homogeneous.reshape((-1,3))).type(torch.float64)
@@ -40,12 +40,12 @@ def get_photometric(flow, img1, img2, pixels2):
     pe = torch.norm(img2 - img1[pixels1[:,:,1], pixels1[:,:,0]], dim=2)
     return pe
 
-def get_geometric(flow, depth1, depth2, pixels2):
+def get_geometric(flow, depth1, depth2, pixels2, device):
     occlusion_mask = get_occlusion_mask(flow, depth2, pixels2).unsqueeze(dim=2)
     flow_masked = torch.mul(flow,occlusion_mask)
     pixels1 = torch.round(pixels2 + flow_masked).type(torch.long)
-    pixels2_3d = reproject(pixels2, depth2)
-    pixels1_3d = reproject(pixels1, depth1[pixels1[:,:,1], pixels1[:,:,0]])
+    pixels2_3d = reproject(pixels2, depth2, device)
+    pixels1_3d = reproject(pixels1, depth1[pixels1[:,:,1], pixels1[:,:,0]], device)
     p_geo = torch.norm(pixels2_3d - pixels1_3d, dim=2)
     return p_geo
 
@@ -54,7 +54,7 @@ def get_occlusion_mask(flow, img2, pixels2):
     occlusion_mask = torch.where((pixels1[:,:,0] < img2.shape[1]) * (pixels1[:,:,0] >= 0) * (pixels1[:,:,1] < img2.shape[0]) * (pixels1[:,:,1] >= 0), 1, 0)
     return occlusion_mask
 
-def consensus_loss(ms_scores, img1, img2, depth1, depth2, static_flow, dynamic_flow, pixels, l_C):
+def consensus_loss(ms_scores, img1, img2, depth1, depth2, static_flow, dynamic_flow, pixels, args):
     """
     ms_preds - motion segmentation prediction
     static_pm - static flow photometric error mask
@@ -72,15 +72,15 @@ def consensus_loss(ms_scores, img1, img2, depth1, depth2, static_flow, dynamic_f
     flow_diff = torch.sum(torch.norm(static_flow - dynamic_flow))
 
     #Geometric error (static geo_r, dynamic geo_f)
-    geo_r = get_geometric(static_flow, depth1, depth2, pixels.clone())
-    geo_f = get_geometric(dynamic_flow, depth1, depth2, pixels.clone())
+    geo_r = get_geometric(static_flow, depth1, depth2, pixels.clone(), args.device)
+    geo_f = get_geometric(dynamic_flow, depth1, depth2, pixels.clone(), args.device)
 
-    label = torch.logical_or(torch.logical_or((pe_r > pe_f), (flow_diff > l_C)),(geo_r > geo_f)).unsqueeze(dim=0).type(torch.float)
+    label = torch.logical_or(torch.logical_or((pe_r < pe_f), (flow_diff < args.l_C)),(geo_r < geo_f)).unsqueeze(dim=0).type(torch.float)
     consensus_loss = nn.functional.binary_cross_entropy(ms_scores, label)
 
     return consensus_loss
 
-def unsupervised_loss(scores, data, l_M = 0.005, l_C = 0.3, l_S = 1):
+def unsupervised_loss(args, scores, data):
     E_C = 0
     sigmoid = nn.Sigmoid()
 
@@ -95,11 +95,11 @@ def unsupervised_loss(scores, data, l_M = 0.005, l_C = 0.3, l_S = 1):
         depth1 = data[3][i][0].unsqueeze(dim=2)
         depth2 = data[3][i][1].unsqueeze(dim=2)
 
-        pixels = torch.from_numpy(_get_pixel_coords(img2).reshape((512,1382,2))).to(device=device)
+        pixels = torch.from_numpy(_get_pixel_coords(img2).reshape((512,1382,2))).to(device=args.device)
 
-        E_C += consensus_loss(sigmoid(scores[i]), img1, img2, depth1, depth2, static_flow, dynamic_flow, pixels, l_C)
+        E_C += consensus_loss(sigmoid(scores[i]), img1, img2, depth1, depth2, static_flow, dynamic_flow, pixels, args)
 
-    total_loss = l_M*E_M + l_C*E_C #+ l_S*E_S
+    total_loss = args.l_M*E_M + args.l_C*E_C #+ args.l_S*E_S
     return total_loss
 
 def run_val(val_loader, model, epoch, args):
@@ -110,50 +110,50 @@ def run_val(val_loader, model, epoch, args):
     sigmoid = nn.Sigmoid()
     with torch.no_grad():
         for batch_idx, (imgs, dynamic_flow, static_flow, depths, motion_seg) in enumerate(val_loader):
-            imgs = imgs.to(device).float()
-            dynamic_flow = dynamic_flow.to(device).float()
-            static_flow = static_flow.to(device).float()
-            depths = depths.to(device).float()
-            motion_seg = motion_seg.to(device)
+            imgs = imgs.to(args.device).float()
+            dynamic_flow = dynamic_flow.to(args.device).float()
+            static_flow = static_flow.to(args.device).float()
+            depths = depths.to(args.device).float()
+            motion_seg = motion_seg.to(args.device)
 
             # forward
             scores = model(imgs)
-            loss = unsupervised_loss(scores, (imgs, dynamic_flow, static_flow, depths))
+            loss = unsupervised_loss(args, scores, (imgs, dynamic_flow, static_flow, depths))
 
             val_losses.append(loss.item())
             scores_rounded = torch.round(sigmoid(scores))
 
             if batch_idx == 0:
-                writer.add_images("visualised_preds", scores_rounded.int(), global_step=epoch+1)
-                writer.add_images("visualised_gts_rgb", imgs[:,3:,:,:], global_step=epoch+1)
-                writer.add_images("visualised_gts", motion_seg, global_step=epoch+1)
+                args.writer.add_images("visualised_preds", ((scores_rounded.int()*-1)+1), global_step=epoch+1)
+                args.writer.add_images("visualised_gts_rgb", imgs[:,3:,:,:], global_step=epoch+1)
+                args.writer.add_images("visualised_gts", motion_seg, global_step=epoch+1)
 
-            iou = iou_pytorch(scores_rounded.int(), motion_seg.int())
+            iou = iou_pytorch(((scores_rounded.int()*-1)+1), motion_seg.int())
             val_iou.append(iou)
 
         val_loss = sum(val_losses)/len(val_losses)
         IoU = sum(val_iou)/len(val_iou)
 
-        writer.add_scalar("val loss", val_loss, epoch*args.train_size)
-        writer.add_scalar("IoU", IoU, epoch*args.train_size)
+        args.writer.add_scalar("val loss", val_loss, epoch*args.train_size)
+        args.writer.add_scalar("IoU", IoU, epoch*args.train_size)
 
     # set back to train ensures layers like dropout, batchnorm are used after eval
     model.train()
     return (val_loss, IoU)
 
-def train(args, prev_model, logger):
+def train(args, train_loader, val_loader, prev_model, logger):
+    sigmoid = nn.Sigmoid()
 
     # init model and pass to `device`
     input_channels=6
     output_channels=1
 
     if prev_model:
-        model = torch.load(prev_model).to(device)
+        model = torch.load(prev_model).to(args.device)
         model = model.float()
 
     else:
-        model = UNET(in_channels=input_channels, out_channels=output_channels).to(device)
-        # model = UNET_Mod(input_channels, output_channels).to(device)
+        model = UNET(in_channels=input_channels, out_channels=output_channels).to(args.device)
         model = model.float()
 
     logger.info(f"loaded model of type: {type(model)}")
@@ -163,7 +163,7 @@ def train(args, prev_model, logger):
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=args.lr_scheduler_factor, patience=args.patience, verbose=True)
 
     # for model saving
-    model_name_prefix = now.strftime(f"%d-%m-%Y_%H-%M_bs{args.batch_size}")
+    model_name_prefix = args.now.strftime(f"%d-%m-%Y_%H-%M_bs{args.batch_size}")
 
     # train network
     print("train network ...")
@@ -180,14 +180,14 @@ def train(args, prev_model, logger):
 
         for batch_idx, (imgs, dynamic_flow, static_flow, depths, _) in enumerate(train_loader):
             # move data to gpu if available
-            imgs = imgs.to(device).float()
-            dynamic_flow = dynamic_flow.to(device).float()
-            static_flow = static_flow.to(device).float()
-            depths = depths.to(device).float()
+            imgs = imgs.to(args.device).float()
+            dynamic_flow = dynamic_flow.to(args.device).float()
+            static_flow = static_flow.to(args.device).float()
+            depths = depths.to(args.device).float()
 
             # forward
             scores = model(imgs)
-            loss = unsupervised_loss(scores, (imgs, dynamic_flow, static_flow, depths))
+            loss = unsupervised_loss(args, scores, (imgs, dynamic_flow, static_flow, depths))
 
             # backward
             optimizer.zero_grad()
@@ -196,11 +196,14 @@ def train(args, prev_model, logger):
             # adam step
             optimizer.step()
 
-            losses.append(loss.item()) 
+            losses.append(loss.item())
+
+            if batch_idx == 0:
+                args.writer.add_images("visualised_preds [training]", ((torch.round(sigmoid(scores))*-1)+1), global_step=epoch+1)
 
             if (batch_idx) % 20 == 0:
-                writer.add_scalar("training loss", sum(losses)/len(losses), epoch*steps_per_epoch + batch_idx)
-                writer.add_scalar("lr change", optimizer.param_groups[0]['lr'], epoch*steps_per_epoch + batch_idx)
+                args.writer.add_scalar("training loss", sum(losses)/len(losses), epoch*steps_per_epoch + batch_idx)
+                args.writer.add_scalar("lr change", optimizer.param_groups[0]['lr'], epoch*steps_per_epoch + batch_idx)
 
         train_loss.append(sum(losses)/len(losses))
         val_IoU.append(run_val(val_loader, model, epoch, args))
@@ -214,7 +217,7 @@ def train(args, prev_model, logger):
         logger.info(f"Epoch [{epoch + 1}/{args.epochs}] with lr {optimizer.param_groups[0]['lr']}, train loss: {round(train_loss[-1], 5)}, val loss: {round(val_IoU[-1][0], 5)}, IoU: {round(val_IoU[-1][1].item(), 5)}, ETA: {round(((total_time/(epoch+1))*(args.epochs-epoch-1))/60**2,2)} hrs")
 
         # check if dir exists, if not create one
-        models_root = os.path.join(root, "saved_models/")
+        models_root = os.path.join(args.root, "saved_models/")
         if not os.path.isdir(os.path.join(models_root, model_name_prefix)):
             os.mkdir(os.path.join(models_root, model_name_prefix), mode=0o770)
         if (epoch+1) % 5 == 0:
@@ -233,7 +236,7 @@ def train(args, prev_model, logger):
         if (epoch+1) % 10 == 0:
             logger.info(f"Epoch {epoch + 1} Current best IoU at epoch {best_IoU_epoch}")
 
-    writer.close()
+    args.writer.close()
     # save final model
     save_path = os.path.join(models_root, model_name_prefix, f"{args.batch_size}_{args.lr}_{args.epochs}.pt")
     torch.save(model, save_path)
@@ -241,33 +244,33 @@ def train(args, prev_model, logger):
 
 def parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", default=1.25e-5, type=float, help='Learning rate - default: 5e-3')
+    parser.add_argument("--lr", default=5e-4, type=float, help='Learning rate - default: 5e-5')
     parser.add_argument("--batch_size", default=1, type=int, help='Default=2')
-    parser.add_argument("--epochs", default=50, type=int, help='Default=50')
+    parser.add_argument("--epochs", default=1000, type=int, help='Default=50')
     parser.add_argument("--patience", default=6, type=float, help='Default=3')
     parser.add_argument("--lr_scheduler_factor", default=0.5, type=float, help="Learning rate multiplier - default: 3")
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
     parser.add_argument("--gamma", default=2.0, type=float, help='Focal loss gamma - default: 2')
-    parser.add_argument("--l_M", default=1.0, type=float, help="hyper-param for motion seg loss")
-    parser.add_argument("--l_C", default=1.0, type=float, help="hyper-param for consensus loss")
+    parser.add_argument("--l_M", default=0.005, type=float, help="hyper-param for motion seg loss")
+    parser.add_argument("--l_C", default=0.3, type=float, help="hyper-param for consensus loss")
     parser.add_argument("--l_S", default=1.0, type=float, help="hyper-param for regularization")
     parser.add_argument("--load_chkpt", '-chkpt', default='0', type=str, help="Loading entire checkpoint path for inference/continue training")
-    parser.add_argument("--dataset_fraction", default=0.02, type=float, help="fraction of dataset to be used")
+    parser.add_argument("--dataset_fraction", default=0.001, type=float, help="fraction of dataset to be used")
     return parser
 
 if __name__ == "__main__":
     args = parse().parse_args()
 
-    root = "/storage/remote/atcremers40/motion_seg/"
+    args.root = "/storage/remote/atcremers40/motion_seg/"
     # root = "/Carla_Data_Collection/supervised_net"
 
-    data_root = os.path.join(root, "datasets/Opt_flow_pixel_preprocess/")
-    log_root = os.path.join(root, "logs/")
-    root_tb = os.path.join(root, "runs/")
+    data_root = os.path.join(args.root, "datasets/CARLA/")
+    log_root = os.path.join(args.root, "logs/")
+    root_tb = os.path.join(args.root, "runs/")
 
     # setup time/date for logging/saving models
-    now = datetime.now()
-    now_string = now.strftime(f"%d-%m-%Y_%H-%M_{args.batch_size}_{args.lr}_{args.epochs}")
+    args.now = datetime.now()
+    now_string = args.now.strftime(f"%d-%m-%Y_%H-%M_{args.batch_size}_{args.lr}_{args.epochs}")
 
     # setup logging
     args, logger = setup_logger(args, log_root, now_string)
@@ -286,11 +289,11 @@ if __name__ == "__main__":
     logger.info(f"running with lr={args.lr}, batch_size={args.batch_size}, epochs={args.epochs}, patience={args.patience}, lr_scheduler_factor={args.lr_scheduler_factor} alpha={args.alpha}, gamma={args.gamma}")
     
     # set device and clean up
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    args.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     # device = torch.device('cpu')
     gc.collect()
     torch.cuda.empty_cache()
-    logger.info(f"running on '{device}'")
+    logger.info(f"running on '{args.device}'")
 
     # dataset
     data_transforms = transforms.Compose([
@@ -298,9 +301,9 @@ if __name__ == "__main__":
     ])
     dataset = CarlaUnsupervised(data_root, test=True) # test kwarg needed for plotting ground truth in tensorboard
 
-    train_loader, val_loader, test_loader = get_dataloaders(dataset, args, shuffle=False)
+    train_loader, val_loader, test_loader = get_dataloaders(dataset, args)
 
     # initialise tensorboard
-    writer = SummaryWriter(root_tb + now_string)
+    args.writer = SummaryWriter(root_tb + now_string)
 
-    train(args, prev_model, logger)
+    train(args, train_loader, val_loader, prev_model, logger)
