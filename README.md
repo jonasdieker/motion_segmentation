@@ -6,7 +6,7 @@ The final report for the project can be found [here](final_report.pdf).
 
 ## Generated CARLA Dataset ([Docs](/docs/carla.md))
 
- - Explore our CARLA dataset in [Jupyter Notebook](/Carla/data_visualization.ipynb)
+ - Explore our CARLA dataset in [Jupyter Notebook](/Carla/dataset_visualization.ipynb)
 
 ![Collection](/docs/assets/CarlaSamples.jpg)
 
