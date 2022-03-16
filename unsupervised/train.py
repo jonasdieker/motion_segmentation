@@ -69,23 +69,29 @@ def consensus_loss(ms_scores, img1, img2, depth1, depth2, static_flow, dynamic_f
     pe_f = get_photometric(dynamic_flow, img1, img2, pixels.clone())
 
     #Optical flow 
-    flow_diff = torch.sum(torch.norm(static_flow - dynamic_flow))
+    flow_diff = torch.norm(static_flow - dynamic_flow, dim=2)
 
     #Geometric error (static geo_r, dynamic geo_f)
     geo_r = get_geometric(static_flow, depth1, depth2, pixels.clone(), args.device)
     geo_f = get_geometric(dynamic_flow, depth1, depth2, pixels.clone(), args.device)
 
-    label = torch.logical_or(torch.logical_or((pe_r < pe_f), (flow_diff < args.l_C)),(geo_r < geo_f)).unsqueeze(dim=0).type(torch.float)
+    # # Loss Variations
+    # label = torch.logical_or(torch.logical_or((pe_r < pe_f), (flow_diff < args.l_C)),(geo_r < geo_f)).unsqueeze(dim=0).type(torch.float)
+    label = torch.logical_or((pe_r < pe_f), (flow_diff < args.l_C)).unsqueeze(dim=0).type(torch.float)
+    # label = (flow_diff < args.l_C).unsqueeze(dim=0).type(torch.float)
+
     consensus_loss = nn.functional.binary_cross_entropy(ms_scores, label)
+    # consensus_loss = sigmoid_focal_loss(ms_scores, label)
 
     return consensus_loss
 
 def unsupervised_loss(args, scores, data):
     E_C = 0
+    E_M = 0
     sigmoid = nn.Sigmoid()
 
     ones = torch.ones(1).expand_as(scores).type_as(scores)
-    E_M = nn.functional.binary_cross_entropy(sigmoid(scores), ones, reduction='sum')
+    E_M = nn.functional.binary_cross_entropy(sigmoid(scores), ones, reduction='mean')
 
     for i in range(data[0].shape[0]):
         img1 = data[0][i][:3,:,:].permute(1,2,0)
@@ -244,18 +250,18 @@ def train(args, train_loader, val_loader, prev_model, logger):
 
 def parse():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", default=5e-4, type=float, help='Learning rate - default: 5e-5')
+    parser.add_argument("--lr", default=5e-3, type=float, help='Learning rate - default: 5e-5')
     parser.add_argument("--batch_size", default=1, type=int, help='Default=2')
-    parser.add_argument("--epochs", default=1000, type=int, help='Default=50')
+    parser.add_argument("--epochs", default=500, type=int, help='Default=50')
     parser.add_argument("--patience", default=6, type=float, help='Default=3')
     parser.add_argument("--lr_scheduler_factor", default=0.5, type=float, help="Learning rate multiplier - default: 3")
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
     parser.add_argument("--gamma", default=2.0, type=float, help='Focal loss gamma - default: 2')
-    parser.add_argument("--l_M", default=0.005, type=float, help="hyper-param for motion seg loss")
+    parser.add_argument("--l_M", default=0.05, type=float, help="hyper-param for motion seg loss")
     parser.add_argument("--l_C", default=0.3, type=float, help="hyper-param for consensus loss")
     parser.add_argument("--l_S", default=1.0, type=float, help="hyper-param for regularization")
     parser.add_argument("--load_chkpt", '-chkpt', default='0', type=str, help="Loading entire checkpoint path for inference/continue training")
-    parser.add_argument("--dataset_fraction", default=0.001, type=float, help="fraction of dataset to be used")
+    parser.add_argument("--dataset_fraction", default=0.004, type=float, help="fraction of dataset to be used")
     return parser
 
 if __name__ == "__main__":

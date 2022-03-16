@@ -45,12 +45,17 @@ def refresh_logger(args, logger):
 
 #----------------------------- DATA LOADING ----------------------#
 
-def get_dataloaders(dataset, args, shuffle=True):
+def get_dataloaders(dataset, args, shuffle=True, overfit=False):
     dataset_length = int(len(dataset) * args.dataset_fraction)
     train_size = int(0.6 *  dataset_length)
     args.train_size = train_size
     val_size = int(0.5*(dataset_length - train_size))
     test_size = dataset_length - train_size - val_size
+    if overfit:
+        train_size = 1
+        val_size = dataset_length - train_size -1
+        test_size = 1
+        shuffle = False
     # taking subset of dataset according to dataset_fraction
     dataset_idx = list(range(0, dataset_length))
     dataset = torch.utils.data.Subset(dataset, dataset_idx)
