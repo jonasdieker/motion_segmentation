@@ -167,21 +167,17 @@ def parse():
     parser.add_argument("--alpha", default=0.25, type=float, help='Focal loss alpha - default: 0.25')
     parser.add_argument("--gamma", default=2.0, type=float, help='Focal loss gamma - default: 2')
     parser.add_argument("--load_chkpt", '-chkpt', default='0', type=str, help="Loading entire checkpoint path for inference/continue training")
-    parser.add_argument("--dataset_fraction", default=0.02, type=float, help="fraction of dataset to be used")
+    parser.add_argument("--dataset_fraction", default=0.002, type=float, help="fraction of dataset to be used")
     return parser
 
 if __name__ == "__main__":
     args = parse().parse_args()
 
-    root = "/storage/remote/atcremers40/motion_seg/"
-    # root = "/Carla_Data_Collection/supervised_net"
+    args.root = "/storage/remote/atcremers40/motion_seg/"
 
-    # data_root = os.path.join(root, "datasets/KITTI_MOD_fixed/training/")
-    # data_root = os.path.join(root, "datasets/Extended_MOD_Masks/")
-    # data_root = os.path.join(root, "datasets/Carla_Annotation/Carla_Export/")
-    data_root = os.path.join(root, "datasets/Opt_flow_pixel_preprocess/")
-    log_root = os.path.join(root, "logs/")
-    root_tb = os.path.join(root, "runs/")
+    data_root = os.path.join(args.root, "datasets/Carla_supervised/")
+    log_root = os.path.join(args.root, "logs/")
+    root_tb = os.path.join(args.root, "runs/")
 
     args.now = datetime.now()
     now_string = args.now.strftime(f"%d-%m-%Y_%H-%M_{args.batch_size}_{args.lr}_{args.epochs}")
