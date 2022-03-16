@@ -166,7 +166,7 @@ def render_optical_flow_data(data):
     plt.imshow(img_out)
 
 def plot_sparse_vecs(flow, sparseness=30, cutoff=1):    
-    fig = plt.figure(figsize = (16,10))
+    fig = plt.figure(figsize = (flow.shape[1]/100,flow.shape[0]/100))
     plt.xlim(0,flow.shape[1])
     plt.ylim(0,flow.shape[0])
     plt.gca().invert_yaxis()
