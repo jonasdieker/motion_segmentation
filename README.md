@@ -1,6 +1,6 @@
 # Motion Segmentation
 
-The goal of the project was to segment the dynamic object in the scene. The crux lies in disentangling what motion in the scene comes from ego vehicle transformation and what from actually dynamic objects. The resulting binary masks can then be used downstream for evaluating dynamic objects.
+The goal of the project was to segment the dynamic objects in the scene. The crux lies in disentangling what motion in the scene comes from ego vehicle transformation and what from actually dynamic objects. The resulting binary masks can then be used downstream for evaluating dynamic objects.
 
 A major part of the contribution of this work is the generation of a dataset for the specific task of motion segmentation. As this is not a standard computer vision problem, limited ground truth data is available for training. A realistic multi-modal dataset was generated using the CARLA simulator by adjusting maps to include parked vehicles in addition to spawning a large number of moving vehicles and pedestrians.
 
